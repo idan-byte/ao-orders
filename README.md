@@ -39,7 +39,8 @@ node scripts/check-schema.mjs
 
 ## הערות לסביבה
 
-- התיקיות `node_modules`, `.next`, `.data` ו-`.git` סומנו כך ש-Dropbox ידלג עליהן. למרות זאת Dropbox עדיין נוגע בקבצים בתוך `node_modules` ומאט את שרת הפיתוח. מומלץ להעביר את הקוד לתיקייה מחוץ ל-Dropbox.
+- הקוד יושב ב-`C:\dev\ao-orders`, מחוץ ל-Dropbox (הועבר ב-11.11.2026 כי Dropbox האט את שרת הפיתוח). המסמכים והקבצים של מילגם נשארו ב-`D:\Dropbox\עידן`. הקוד עדיין לא מגובה מחוץ למחשב הזה.
+- אחרי העתקה נקייה של הפרויקט יש להריץ `npx next typegen` לפני בדיקת טיפוסים, כי הטיפוס `LayoutProps` נוצר אוטומטית.
 - הטלמטריה של Next.js כובתה.
 - ב-Next.js 16 עם Cache Components כל קריאה למסד חייבת להיות בתוך `<Suspense>`. ראו `src/app/catalog/page.tsx` כדוגמה, ואת המדריכים ב-`web/node_modules/next/dist/docs`.
 
