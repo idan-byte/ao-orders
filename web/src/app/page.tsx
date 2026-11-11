@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { Loading } from "@/components/loading";
+import { NoAccess } from "@/components/no-access";
+import { requirePermission } from "@/lib/auth";
 
 // The page shell renders instantly; the data-dependent part streams in behind the Suspense boundary.
 export default function Home() {
@@ -13,6 +15,8 @@ export default function Home() {
 }
 
 async function HomeContent() {
+  const { allowed } = await requirePermission("dashboard.view");
+  if (!allowed) return <NoAccess />;
   const [stats] = await query<{ products: number; departments: number; tables: number }>(`
     select (select count(*)::int from products) as products,
            (select count(*)::int from departments) as departments,
@@ -22,7 +26,7 @@ async function HomeContent() {
     <div className="flex flex-col gap-4">
       <h1 className="font-display text-2xl font-bold">מהדורה 1 בבנייה</h1>
       <p className="max-w-prose text-muted">
-        שלד המערכת רץ מול מסד נתונים אמיתי. המסכים נבנים לפי הסדר: לקוחות ומחירים, הצעות מחיר ו-CRM, הזמנות, ייצור, תעודת משלוח.
+        כניסה, הרשאות וקטלוג פועלים. המסכים הבאים נבנים לפי הסדר: לקוחות ומחירים, הצעות מחיר ו-CRM, הזמנות, ייצור, תעודת משלוח.
       </p>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
         <Stat value={stats.products} label="מוצרים מחשבשבת" />

@@ -2,6 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { readdir, readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { connection } from "next/server";
+import { normalizeMobile } from "@/lib/auth-core";
 
 // Development database: PostgreSQL embedded in the Node process (PGlite), stored under web/.data.
 // Production will use a regular PostgreSQL server behind the same query() function.
@@ -29,7 +30,18 @@ async function open(): Promise<PGlite> {
     });
   }
   await seedCatalog(db);
+  await bootstrapAdmin(db);
   return db;
+}
+
+// An empty system has nobody who could sign in and add users. If AO_BOOTSTRAP_ADMIN_MOBILE is set
+// and the users table is empty, that mobile becomes the first system administrator.
+async function bootstrapAdmin(db: PGlite) {
+  const mobile = normalizeMobile(process.env.AO_BOOTSTRAP_ADMIN_MOBILE ?? "");
+  if (!mobile) return;
+  const existing = await db.query<{ n: number }>("select count(*)::int as n from users");
+  if (existing.rows[0].n > 0) return;
+  await db.query("insert into users (mobile, full_name, role) values ($1, $2, 'admin')", [mobile, "מנהל מערכת"]);
 }
 
 // Loads the catalog snapshot taken from Hashavshevet. Stands in for the Connector until it is built.
