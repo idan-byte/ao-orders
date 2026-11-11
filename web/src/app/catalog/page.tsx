@@ -1,6 +1,9 @@
 import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { Loading } from "@/components/loading";
+import { NoAccess } from "@/components/no-access";
+import { requirePermission } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 
 type ProductRow = {
   sku: string;
@@ -23,6 +26,9 @@ export default function CatalogPage() {
 }
 
 async function CatalogContent() {
+  const { user, allowed } = await requirePermission("catalog.view");
+  if (!allowed) return <NoAccess />;
+  const showPrices = can(user.role, "prices.view");
   const rows = await query<ProductRow>(`
     select p.sku, p.name, p.base_price::text, d.name as department, o.default_shift,
            (select count(*)::int from product_variants v where v.sku = p.sku and v.active) as variants
@@ -58,7 +64,7 @@ async function CatalogContent() {
                   <th className="px-2 py-1.5 text-start font-medium">מוצר</th>
                   <th className="px-2 py-1.5 text-start font-medium">משמרת</th>
                   <th className="px-2 py-1.5 text-start font-medium">סוגים</th>
-                  <th className="px-2 py-1.5 text-end font-medium">מחיר בסיס לפני מע״מ</th>
+                  {showPrices ? <th className="px-2 py-1.5 text-end font-medium">מחיר בסיס לפני מע״מ</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -68,9 +74,11 @@ async function CatalogContent() {
                     <td className="px-2 py-2">{r.name}</td>
                     <td className="px-2 py-2">{r.department && r.default_shift !== null ? SHIFTS[r.default_shift] : ""}</td>
                     <td className="px-2 py-2">{r.variants || <span className="text-muted">טרם הוגדרו</span>}</td>
-                    <td className="px-2 py-2 text-end">
-                      {Number(r.base_price) > 0 ? money.format(Number(r.base_price)) : <span className="text-muted">לא מוגדר</span>}
-                    </td>
+                    {showPrices ? (
+                      <td className="px-2 py-2 text-end">
+                        {Number(r.base_price) > 0 ? money.format(Number(r.base_price)) : <span className="text-muted">לא מוגדר</span>}
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
