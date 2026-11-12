@@ -232,6 +232,11 @@ async function CustomerContent({ params }: { params: PageProps<"/customers/[id]"
                   הצעת מחיר חדשה
                 </Link>
               ) : null}
+              {can(user.role, "orders.edit") ? (
+                <Link href={`/orders/new?customer=${c.id}`} className={small}>
+                  הזמנה חדשה
+                </Link>
+              ) : null}
             </div>
           </div>
           <p className="mb-3 text-sm text-muted" id="customer-summary">

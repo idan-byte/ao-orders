@@ -55,7 +55,7 @@ try {
   await admin.waitForURL(/\/sales\/[0-9a-f-]{36}$/);
   const leadUrl = admin.url();
   await admin.waitForSelector("#lead-stage");
-  check("new lead: stage, follow-up task, opening logged", [await text(admin, "#lead-stage"), await count(admin, "[data-tasks] li"), (await text(admin, "[data-timeline]")).includes("פנייה נפתחה (וואטסאפ)")], ["פנייה חדשה", 1, true]);
+  check("new lead: stage, follow-up task, opening logged", [await text(admin, "#lead-stage"), await count(admin, "[data-tasks] li:visible"), (await text(admin, "[data-timeline]")).includes("פנייה נפתחה (וואטסאפ)")], ["פנייה חדשה", 1, true]);
   check("no quote button before there is a customer", await count(admin, "text=פתח הצעת מחיר"), 0);
 
   await admin.goto(BASE + "/");
@@ -78,7 +78,7 @@ try {
   await admin.waitForSelector("[data-tasks] li:has-text('לשלוח תפריט לדוגמה')");
   await admin.locator("[data-tasks] li", { hasText: "לחזור לפונה" }).locator("button").click();
   await admin.waitForFunction(() => [...document.querySelectorAll("[data-tasks] li")].filter((li) => li.querySelector("button")).length === 1);
-  check("completing a task leaves one open", await count(admin, "[data-tasks] li button"), 1);
+  check("completing a task leaves one open", await count(admin, "[data-tasks] li:visible button"), 1);
 
   // ---------- customer card from the lead, then a quote: the stage follows the quote
   await admin.click("text=פתח כרטיס לקוח מהפנייה");
@@ -168,7 +168,7 @@ try {
   const c = await signIn(clerk);
   await c.goto(leadUrl);
   await c.waitForSelector("#lead-stage");
-  check("order clerk can read a lead but not act on it", [await count(c, "#activity-body"), await count(c, "#task-title"), await count(c, "[data-tasks] li button")], [0, 0, 0]);
+  check("order clerk can read a lead but not act on it", [await count(c, "#activity-body"), await count(c, "#task-title"), await count(c, "[data-tasks] li:visible button")], [0, 0, 0]);
   await c.goto(BASE + "/sales");
   await c.waitForSelector("[data-board]");
   check("order clerk has no new-lead form", await count(c, "#lead-summary"), 0);

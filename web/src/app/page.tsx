@@ -60,12 +60,12 @@ async function HomeContent() {
         {quotes ? <Tile href="/quotes?status=sent" value={s.quotes_waiting} label="הצעות ממתינות ללקוח" note={prices && s.quotes_waiting_sum > 0 ? `${money.format(s.quotes_waiting_sum)} כולל מע״מ` : undefined} id="tile-waiting" /> : null}
         {quotes ? <Tile href="/quotes?status=sent" value={s.quotes_expired} label="הצעות שנשלחו ותוקפן פג" id="tile-expired" /> : null}
         {quotes ? <Tile href="/quotes?status=draft" value={s.quotes_draft} label="הצעות בטיוטה" id="tile-drafts" /> : null}
-        <Tile value={s.deliveries_week} label="אספקות מאושרות לשבוע הקרוב" note={prices && s.orders_sum_week > 0 ? `${money.format(s.orders_sum_week)} לפני מע״מ` : undefined} id="tile-deliveries" />
+        <Tile href={can(user.role, "orders.view") ? "/orders" : undefined} value={s.deliveries_week} label="אספקות מאושרות לשבוע הקרוב" note={prices && s.orders_sum_week > 0 ? `${money.format(s.orders_sum_week)} לפני מע״מ` : undefined} id="tile-deliveries" />
         {prices ? <Tile href="/customers?pending=1" value={s.pending_prices} label="מחירי לקוח ממתינים לבדיקה" id="tile-prices" /> : null}
       </div>
 
       <p className="max-w-prose text-sm text-muted">
-        המערכת בבנייה. פועלים: כניסה והרשאות, סנכרון מחשבשבת, לקוחות והסכמי מחיר, פניות ומעקב, הצעות מחיר ואישורן. הבאים בתור: מסכי הזמנות, ייצור ותעודת משלוח.
+        המערכת בבנייה. פועלים: כניסה והרשאות, סנכרון מחשבשבת, לקוחות והסכמי מחיר, פניות ומעקב, הצעות מחיר ואישורן. הזמנות ושינויים בהן. הבאים בתור: הזמנות קבועות, תוכנית ייצור ותעודת משלוח.
         {s.customers === 0 ? " עדיין לא נטענו לקוחות: יש להריץ סנכרון במסך הלקוחות." : ""}
       </p>
     </div>
