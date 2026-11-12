@@ -38,6 +38,8 @@ export const PERMISSIONS = [
   "shipping.view",
   "shipping.ship",
   "shipping.manage",
+  "hotfood.view",
+  "hotfood.manage",
   "users.manage",
   "sync.run",
   "settings.manage",
