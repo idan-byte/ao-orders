@@ -9,7 +9,7 @@ const ADMIN = process.env.AO_BOOTSTRAP_ADMIN_MOBILE ?? "0500000000";
 const [RA, RB, DRIVER] = ["קו בדיקה א", "קו בדיקה ב", "נהג בדיקה"];
 const tag = Date.now() % 1000000;
 const rnd = () => "05" + String(Math.floor(Math.random() * 1e8)).padStart(8, "0");
-const first = new Date(Date.UTC(2040 + Math.floor(Math.random() * 50), Math.floor(Math.random() * 12), 1 + Math.floor(Math.random() * 20)));
+const first = new Date(Date.UTC(3000 + Math.floor(Math.random() * 200), Math.floor(Math.random() * 12), 1 + Math.floor(Math.random() * 20)));
 const DAY = first.toISOString().slice(0, 10);
 const DAY2 = new Date(first.getTime() + 86400_000).toISOString().slice(0, 10);
 

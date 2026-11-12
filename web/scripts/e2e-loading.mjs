@@ -9,7 +9,7 @@ const ADMIN = process.env.AO_BOOTSTRAP_ADMIN_MOBILE ?? "0500000000";
 const [ROUTE, DRIVER] = ["קו בדיקה טעינה", "נהג בדיקה טעינה"];
 const tag = Date.now() % 1000000;
 const rnd = () => "05" + String(Math.floor(Math.random() * 1e8)).padStart(8, "0");
-const DAY = new Date(Date.UTC(2040 + Math.floor(Math.random() * 50), Math.floor(Math.random() * 12), 1 + Math.floor(Math.random() * 20))).toISOString().slice(0, 10);
+const DAY = new Date(Date.UTC(3200 + Math.floor(Math.random() * 200), Math.floor(Math.random() * 12), 1 + Math.floor(Math.random() * 20))).toISOString().slice(0, 10);
 const routeCard = `[data-route="${ROUTE}"]`;
 const driverCard = `[data-driver="${DRIVER}"]`;
 
@@ -170,6 +170,17 @@ try {
   check("the route switches to delivery mode, in delivery order, without the delivery left behind", [await text(admin, "#progress"), await stopNames(admin), (await text(admin, "#route-state")).includes(`הייצור מתעכב ${tag}`)], ["נמסרו 0 מתוך 2 · טרם התחיל", [a.name, b.name], true]);
   await go(admin, `/shipping?date=${DAY}`, "[data-route-card]");
   check("the board shows delivery progress, and what was left behind is waiting again", [await text(admin, `[data-route-card="${ROUTE}"] [data-progress]`), await count(admin, `[data-unassigned="${c.number}"]`)], ["הפצה · הועמסו 2/2 · נמסרו 0/2", 1]);
+  // ---------- alerts and exceptions
+  check("the board points at the open alerts", Number(await admin.locator("#alerts-link").getAttribute("data-open")) >= 2, true);
+  await go(admin, "/shipping/alerts", "#alerts-summary");
+  const leftAlert = admin.locator('[data-alert="left_behind"]', { hasText: `הזמנה ${c.number}` });
+  check("the delivery left behind is an urgent alert with the reason", [await leftAlert.count(), await leftAlert.getAttribute("data-severity"), (await leftAlert.textContent()).includes(`הייצור מתעכב ${tag}`)], [1, "high", true]);
+  check("the departure without everything is reported too", await admin.locator('[data-alert="departed_with_missing"]', { hasText: `הייצור מתעכב ${tag}` }).count(), 1);
+  await leftAlert.locator("[name=note]").fill(`שובץ מחדש ${tag}`);
+  await leftAlert.locator("button").click();
+  await admin.waitForFunction((n) => ![...document.querySelectorAll('[data-alert="left_behind"]')].some((li) => li.textContent.includes(`הזמנה ${n}`)), c.number);
+  check("marking it handled moves it to the handled list with what was done", (await text(admin, "[data-handled]")).includes(`שובץ מחדש ${tag}`), true);
+
   await go(admin, a.url, '[data-delivery="0"]');
   check("the order shows that it left", await text(admin, '[data-delivery="0"] [data-delivery-status]'), "יצאה לשילוח");
 
@@ -193,6 +204,13 @@ try {
 } finally {
   if (made) {
     try {
+      // Alerts that belong to test routes (from this run or from earlier ones) are marked handled, so the real screen stays clean.
+      await go(admin, "/shipping/alerts", "#alerts-summary");
+      const mine = '[data-alerts] li:has-text("קו בדיקה") button';
+      for (let n = await count(admin, mine); n > 0; n = await count(admin, mine)) {
+        await admin.locator(mine).first().click();
+        await admin.waitForFunction(([sel, before]) => document.querySelectorAll(sel).length < before, ['[data-alerts] li button', await count(admin, '[data-alerts] li button')]);
+      }
       await go(admin, "/shipping/routes", "#new-route");
       if ((await count(admin, `${routeCard}[data-active="true"]`)) > 0) {
         await admin.locator(`${routeCard} button:has-text("הפסק להשתמש בקו")`).click();

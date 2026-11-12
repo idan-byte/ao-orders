@@ -9,8 +9,10 @@ const rnd = () => "05" + String(Math.floor(Math.random() * 1e8)).padStart(8, "0"
 const tag = Date.now() % 1000000;
 // A far-future date nobody else uses, so the list filter can be checked exactly.
 const pick = (n) => Math.floor(Math.random() * n);
-const DAY1 = `${2040 + pick(50)}-${String(pick(12) + 1).padStart(2, "0")}-${String(pick(27) + 1).padStart(2, "0")}`;
-const DAY2 = `${Number(DAY1.slice(0, 4)) + 1}-${DAY1.slice(5)}`;
+// Two consecutive days somewhere in the years 4000-8999: a range no other test uses, wide enough that
+// leftovers of earlier runs of this test practically never fall between the two days.
+const DAY1 = `${4000 + pick(5000)}-${String(pick(12) + 1).padStart(2, "0")}-${String(pick(27) + 1).padStart(2, "0")}`;
+const DAY2 = `${DAY1.slice(0, 8)}${String(Number(DAY1.slice(8)) + 1).padStart(2, "0")}`;
 
 let failed = 0;
 function check(label, actual, expected) {
@@ -84,11 +86,12 @@ try {
   await admin.waitForSelector("[data-day]");
   check("list filtered to one day shows exactly that delivery", [await count(admin, "[data-day]"), await count(admin, "main table tbody tr"), (await text(admin, "main table tbody tr")).includes("07:00–09:00")], [1, 1, true]);
   await admin.goto(`${BASE}/orders?from=${DAY1}&to=${DAY2}&q=${encodeURIComponent("קוקטיל")}`);
-  await admin.waitForSelector("[data-day]");
-  check("search by product finds only the delivery that has it", await count(admin, "main table tbody tr"), 1);
+  // The previous list stays mounted but hidden for a moment, so wait for the new one and count only what is visible.
+  await admin.waitForFunction(() => [...document.querySelectorAll("#orders-q")].some((i) => i.offsetParent && i.value === "קוקטיל"));
+  check("search by product finds only the delivery that has it", await count(admin, "main table tbody tr:visible"), 1);
   await admin.goto(`${BASE}/orders?from=${DAY1}&to=${DAY2}&status=cancelled`);
-  await admin.waitForSelector("main section p");
-  check("status filter with no match", await count(admin, "main table tbody tr"), 0);
+  await admin.waitForFunction(() => [...document.querySelectorAll("#orders-status")].some((i) => i.offsetParent && i.value === "cancelled"));
+  check("status filter with no match", await count(admin, "main table tbody tr:visible"), 0);
 
   // ---------- change with history
   await admin.goto(orderUrl);

@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 import { withTransaction } from "@/lib/db";
 import { assertPermission } from "@/lib/auth";
+import { resolveEvent } from "@/lib/alerts-core";
 import { assignDelivery, moveAddress, moveStop, planDay, saveDriver, saveRoute, setAddressRoute, setDailyDriver, setDriverActive, setRouteActive, ShippingError } from "@/lib/shipping-core";
 
 export type ShippingState = { error?: string; ok?: string };
@@ -123,4 +124,17 @@ export async function driverActiveAction(fd: FormData): Promise<void> {
   const id = int(fd, "driver_id");
   if (id !== null) await withTransaction((q) => setDriverActive(q, id, s(fd, "active") === "true")).catch(() => {});
   refresh();
+}
+
+export async function resolveAlertAction(_prev: ShippingState, fd: FormData): Promise<ShippingState> {
+  const user = await assertPermission("shipping.manage");
+  const eventId = int(fd, "event_id");
+  if (eventId === null) return { error: "ההתראה לא נמצאה." };
+  try {
+    await withTransaction((q) => resolveEvent(q, eventId, user.id, s(fd, "note")));
+    refresh();
+    return {};
+  } catch (e) {
+    return { error: message(e) };
+  }
 }

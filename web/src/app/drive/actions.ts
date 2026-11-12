@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { query, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
+import { closeRoute } from "@/lib/alerts-core";
 import { depart, processDeliveryAction, recordRefusal, RefusedError, routeAccess, type Action } from "@/lib/loading-core";
 import { ShippingError } from "@/lib/shipping-core";
 
@@ -51,6 +52,18 @@ export async function departAction(_prev: State, fd: FormData): Promise<State> {
     await withTransaction((q) => depart(q, ctx.dailyRouteId, ctx.user.id, { allowMissing: withMissing, reason: s(fd, "reason") }));
     refresh();
     return { ok: "הקו יצא להפצה. המסך עבר למצב פריקה." };
+  } catch (e) {
+    return { error: e instanceof ShippingError ? e.message : "הפעולה נכשלה. שום דבר לא נשמר." };
+  }
+}
+
+export async function closeRouteAction(_prev: State, fd: FormData): Promise<State> {
+  const ctx = await context(fd);
+  if (!ctx || !ctx.access.manage) return { error: "סגירת קו עם אספקות שלא נמסרו דורשת מנהל שילוח." };
+  try {
+    const n = await withTransaction((q) => closeRoute(q, ctx.dailyRouteId, ctx.user.id, s(fd, "reason")));
+    refresh();
+    return { ok: `הקו נסגר. ${n} אספקות סומנו כחריגה, וההזמנות שלהן מחכות להחלטה.` };
   } catch (e) {
     return { error: e instanceof ShippingError ? e.message : "הפעולה נכשלה. שום דבר לא נשמר." };
   }
