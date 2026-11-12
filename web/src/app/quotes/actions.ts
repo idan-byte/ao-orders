@@ -48,7 +48,7 @@ function parseDraft(raw: string): DraftInput | null {
     return {
       lines: lines.map((l: Record<string, unknown>) => ({
         sku: String(l.sku ?? ""),
-        variantId: null,
+        variantId: Number.isInteger(l.variantId) ? (l.variantId as number) : null,
         description: String(l.description ?? ""),
         quantity: Number(l.quantity),
         unitPrice: Number(l.unitPrice),

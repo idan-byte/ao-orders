@@ -1,5 +1,6 @@
 // Order logic: manual entry, changes with history, and delivery status transitions. No dependency on Next.js.
 import type { Q } from "./auth-core.ts";
+import { CatalogError, checkVariants } from "./catalog-core.ts";
 import { VAT_RATE } from "./quote-totals.ts";
 import { validateDraft, type DraftInput } from "./quotes-core.ts";
 
@@ -48,6 +49,14 @@ async function addressSnapshot(q: Q, addressId: string | null, customerId: strin
   return [a.street, a.city].filter(Boolean).join(", ");
 }
 
+async function variantsOk(q: Q, lines: { sku: string; variantId?: number | null }[], allowInactive?: Set<string>) {
+  try {
+    await checkVariants(q, lines, allowInactive);
+  } catch (e) {
+    throw new OrderError(e instanceof CatalogError ? e.message : "בדיקת הסוגים נכשלה.");
+  }
+}
+
 async function checkSkus(q: Q, skus: string[]) {
   for (const sku of new Set(skus)) {
     const [p] = await q("select 1 from products where sku = $1", [sku]);
@@ -67,6 +76,7 @@ export async function createOrder(q: Q, customerId: string, userId: string, d: D
   if (!c) throw new OrderError("הלקוח לא נמצא.");
   if (d.lines.some((l) => !l.deliveryDate) && !d.deliveryDate) throw new OrderError("יש לקבוע תאריך אספקה להזמנה, או לכל שורה.");
   await checkSkus(q, d.lines.map((l) => l.sku));
+  await variantsOk(q, d.lines);
   const snapshot = await addressSnapshot(q, d.addressId, customerId);
 
   const [order] = await q<{ id: string; number: number }>(
@@ -129,6 +139,8 @@ export async function updateDelivery(q: Q, deliveryId: string, input: DeliveryIn
   const snapshot = input.addressId === del.address_id ? undefined : await addressSnapshot(q, input.addressId, del.customer_id);
 
   const oldLines = await q<{ sku: string; variant_id: number | null; quantity: number; unit_price: number }>("select sku, variant_id, quantity::float, unit_price::float from delivery_lines where delivery_id = $1", [deliveryId]);
+  // A line that already carries a variant may keep it even if that variant was switched off since.
+  await variantsOk(q, input.lines, new Set(oldLines.filter((l) => l.variant_id !== null).map((l) => `${l.sku}|${l.variant_id}`)));
   const key = (l: { sku: string; variantId?: number | null; variant_id?: number | null }) => `${l.sku}|${l.variantId ?? l.variant_id ?? ""}`;
   const sum = <T,>(rows: T[], k: (r: T) => string, v: (r: T) => number) => rows.reduce((m, r) => m.set(k(r), (m.get(k(r)) ?? 0) + v(r)), new Map<string, number>());
   const beforeQty = sum(oldLines, key, (l) => l.quantity);

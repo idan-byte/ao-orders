@@ -1,6 +1,23 @@
 import { query } from "@/lib/db";
 import type { EditorProduct } from "@/components/lines-editor";
 
+const KEEP = {
+  delivery: "select variant_id from delivery_lines where delivery_id = $1",
+  quote: "select variant_id from quote_lines where quote_version_id = $1",
+  standing: "select variant_id from standing_order_lines where standing_order_id = $1",
+};
+
+/** Active variants per product. A variant already used by the document being edited stays selectable even if it was switched off. */
+export async function variantsBySku(kind: keyof typeof KEEP | null, id?: string | null): Promise<Map<string, { id: number; name: string }[]>> {
+  const rows =
+    kind && id
+      ? await query<{ id: number; sku: string; name: string }>(`select id, sku, name from product_variants where active or id in (${KEEP[kind]}) order by name`, [id])
+      : await query<{ id: number; sku: string; name: string }>("select id, sku, name from product_variants where active order by name");
+  const map = new Map<string, { id: number; name: string }[]>();
+  for (const r of rows) map.set(r.sku, [...(map.get(r.sku) ?? []), { id: r.id, name: r.name }]);
+  return map;
+}
+
 /** Orderable products with the price this customer gets on a date: the agreed price if one applies, else the base price. */
 export async function productsForCustomer(customerId: string, onDate: string, alsoDeliveryId?: string): Promise<EditorProduct[]> {
   const rows = await query<{ sku: string; name: string; vat_exempt: boolean; base_price: number; agreed_price: number | null }>(
@@ -13,7 +30,8 @@ export async function productsForCustomer(customerId: string, onDate: string, al
      order by p.name`,
     [customerId, onDate, alsoDeliveryId ?? null],
   );
-  return rows.map((p) => ({ sku: p.sku, name: p.name, vatExempt: p.vat_exempt, price: p.agreed_price ?? p.base_price, agreed: p.agreed_price !== null }));
+  const variants = await variantsBySku(alsoDeliveryId ? "delivery" : null, alsoDeliveryId);
+  return rows.map((p) => ({ variants: variants.get(p.sku) ?? [], sku: p.sku, name: p.name, vatExempt: p.vat_exempt, price: p.agreed_price ?? p.base_price, agreed: p.agreed_price !== null }));
 }
 
 export async function addressesOf(customerId: string): Promise<{ id: string; text: string }[]> {

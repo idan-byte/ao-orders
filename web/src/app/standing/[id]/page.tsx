@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { addressesOf } from "@/lib/orders-data";
+import { addressesOf, variantsBySku } from "@/lib/orders-data";
 import { STATUS_LABEL } from "@/lib/orders-core";
 import { WEEKDAYS } from "@/lib/standing-core";
 import { ActionForm } from "@/components/action-form";
@@ -50,7 +50,10 @@ async function StandingOrder({ params }: { params: PageProps<"/standing/[id]">["
     );
   }
   const mayEdit = can(user.role, "orders.edit");
-  const lines = await query<{ weekday: number; sku: string; name: string; quantity: number }>("select l.weekday, l.sku, p.name, l.quantity::float from standing_order_lines l join products p on p.sku = l.sku where l.standing_order_id = $1 order by l.id", [id]);
+  const lines = await query<{ weekday: number; sku: string; variant_id: number | null; name: string; quantity: number }>(
+    "select l.weekday, l.sku, l.variant_id, p.name || coalesce(' · ' || v.name, '') as name, l.quantity::float from standing_order_lines l join products p on p.sku = l.sku left join product_variants v on v.id = l.variant_id where l.standing_order_id = $1 order by l.id",
+    [id],
+  );
   const skipped = await query<{ day: string; reason: string | null }>("select day::text, reason from standing_order_days where standing_order_id = $1 and skipped and day >= $2::date order by day", [id, so.today]);
   const generated = await query<{ day: string; order_id: string; number: number; status: string }>(
     `select sd.day::text, o.id::text as order_id, o.number, st.status
@@ -61,11 +64,15 @@ async function StandingOrder({ params }: { params: PageProps<"/standing/[id]">["
 
   const bySku = new Map<string, StandingRow>();
   for (const l of lines) {
-    const row = bySku.get(l.sku) ?? { key: l.sku, sku: l.sku, qty: ["", "", "", "", "", ""] };
+    const k = `${l.sku}|${l.variant_id ?? ""}`;
+    const row = bySku.get(k) ?? { key: k, sku: l.sku, variantId: l.variant_id === null ? "" : String(l.variant_id), qty: ["", "", "", "", "", ""] };
     if (l.weekday < 6) row.qty[l.weekday] = String(l.quantity);
-    bySku.set(l.sku, row);
+    bySku.set(k, row);
   }
-  const products = mayEdit ? await query<{ sku: string; name: string }>("select p.sku, p.name from products p join product_ops o on o.sku = p.sku where o.orderable or p.sku in (select sku from standing_order_lines where standing_order_id = $1) order by p.name", [id]) : [];
+  const variants = mayEdit ? await variantsBySku("standing", id) : new Map<string, { id: number; name: string }[]>();
+  const products = mayEdit
+    ? (await query<{ sku: string; name: string }>("select p.sku, p.name from products p join product_ops o on o.sku = p.sku where o.orderable or p.sku in (select sku from standing_order_lines where standing_order_id = $1) order by p.name", [id])).map((p) => ({ ...p, variants: variants.get(p.sku) ?? [] }))
+    : [];
   const addresses = mayEdit ? await addressesOf(so.customer_id) : [];
 
   return (

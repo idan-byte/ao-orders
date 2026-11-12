@@ -63,9 +63,10 @@ async function OrderContent({ params }: { params: PageProps<"/orders/[id]">["par
     [id],
   );
   const lines = await query<Line>(
-    `select l.delivery_id::text, l.sku, p.name, l.quantity::float, l.unit_price::float, l.discount_pct::float, p.vat_exempt, dp.name as department
+    `select l.delivery_id::text, l.sku, p.name || coalesce(' · ' || pv.name, '') as name, l.quantity::float, l.unit_price::float, l.discount_pct::float, p.vat_exempt, dp.name as department
      from delivery_lines l join deliveries d on d.id = l.delivery_id join products p on p.sku = l.sku
      left join product_ops o on o.sku = l.sku left join departments dp on dp.id = o.department_id
+     left join product_variants pv on pv.id = l.variant_id
      where d.order_id = $1 order by l.id`,
     [id],
   );
