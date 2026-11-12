@@ -47,7 +47,7 @@ export function LoginForm() {
       ) : null}
       {state.devCode ? (
         <p className="rounded-lg border border-dashed border-line px-3 py-2 text-sm">
-          סביבת פיתוח, אין שליחת SMS. הקוד הוא{" "}
+          סביבת פיתוח: למספר הזה לא נשלח SMS. הקוד הוא{" "}
           <b dir="ltr" className="tabular-nums">
             {state.devCode}
           </b>
