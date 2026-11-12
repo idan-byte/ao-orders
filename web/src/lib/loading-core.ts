@@ -206,16 +206,32 @@ export async function scanDelivery(q: Q, input: { code: string; dailyRouteId: st
   return { ...result, customer: d.customer, orderNumber: d.number, stop: d.stop_order };
 }
 
-export type Label = { deliveryId: string; code: string; orderNumber: number; customer: string; address: string | null; stop: number | null; units: number; window: string | null; notes: string | null };
+export type Label = { deliveryId: string; code: string; orderNumber: number; customer: string; address: string | null; stop: number | null; units: number; window: string | null; notes: string | null; packages: number };
 
 /** One label for every delivery on the route, in loading order: the last stop is loaded first. */
 export async function routeLabels(q: Q, dailyRouteId: string): Promise<Label[]> {
   return q<Label>(
     `select d.id::text as "deliveryId", d.scan_code as code, o.number as "orderNumber", c.name as customer, d.address_snapshot as address, d.stop_order as stop,
             coalesce((select sum(l.quantity) from delivery_lines l where l.delivery_id = d.id), 0)::float as units,
-            nullif(concat_ws('–', to_char(d.window_from, 'HH24:MI'), to_char(d.window_to, 'HH24:MI')), '') as window, d.shipping_notes as notes
+            nullif(concat_ws('–', to_char(d.window_from, 'HH24:MI'), to_char(d.window_to, 'HH24:MI')), '') as window, d.shipping_notes as notes, d.package_count as packages
      from deliveries d join orders o on o.id = d.order_id join customers c on c.id = o.customer_id
      where d.daily_route_id = $1 and d.status <> 'cancelled' order by d.stop_order desc, o.number`,
     [dailyRouteId],
   );
+}
+
+/** Sets in how many packages a delivery goes out, which is how many labels are printed for it. */
+export async function setPackageCount(q: Q, deliveryId: string, count: number, userId: string): Promise<void> {
+  if (!Number.isInteger(count) || count < 1 || count > 99) throw new ShippingError("מספר האריזות צריך להיות בין 1 ל-99.");
+  const [d] = await q<{ package_count: number; status: string }>("select package_count, status::text from deliveries where id = $1 for update", [deliveryId]);
+  if (!d) throw new ShippingError("האספקה לא נמצאה.");
+  if (d.status === "cancelled") throw new ShippingError("האספקה בוטלה.");
+  if (d.package_count === count) return;
+  await q("update deliveries set package_count = $2 where id = $1", [deliveryId, count]);
+  await q("insert into audit_log (user_id, action, entity_type, entity_id, before, after) values ($1, 'package_count', 'delivery', $2, $3, $4)", [userId, deliveryId, JSON.stringify({ packages: d.package_count }), JSON.stringify({ packages: count })]);
+}
+
+/** One printed label per package: "2 of 3" on each. */
+export function expandLabels(labels: Label[]): (Label & { index: number })[] {
+  return labels.flatMap((l) => Array.from({ length: l.packages }, (_, i) => ({ ...l, index: i + 1 })));
 }
