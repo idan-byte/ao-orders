@@ -8,6 +8,7 @@ const NAV: { href: string; label: string; permission: Permission }[] = [
   { href: "/sales", label: "מכירות", permission: "leads.view" },
   { href: "/quotes", label: "הצעות מחיר", permission: "quotes.view" },
   { href: "/orders", label: "הזמנות", permission: "orders.view" },
+  { href: "/production", label: "ייצור", permission: "production.view" },
   { href: "/customers", label: "לקוחות", permission: "customers.view" },
   { href: "/catalog", label: "קטלוג", permission: "catalog.view" },
   { href: "/users", label: "משתמשים", permission: "users.manage" },

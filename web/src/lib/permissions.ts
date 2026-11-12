@@ -31,6 +31,7 @@ export const PERMISSIONS = [
   "orders.view",
   "orders.edit",
   "orders.cancel",
+  "orders.change_locked",
   "production.view",
   "production.mark",
   "production.lock",

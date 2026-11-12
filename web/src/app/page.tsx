@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
@@ -20,6 +21,8 @@ export default function Home() {
 
 async function HomeContent() {
   const { user, allowed } = await requirePermission("dashboard.view");
+  // Production staff have no dashboard: they go straight to their plan.
+  if (!allowed && can(user.role, "production.view")) redirect("/production");
   if (!allowed) return <NoAccess />;
 
   const [s] = await query<{
@@ -65,7 +68,7 @@ async function HomeContent() {
       </div>
 
       <p className="max-w-prose text-sm text-muted">
-        המערכת בבנייה. פועלים: כניסה והרשאות, סנכרון מחשבשבת, לקוחות והסכמי מחיר, פניות ומעקב, הצעות מחיר ואישורן. הזמנות ושינויים בהן. הבאים בתור: הזמנות קבועות, תוכנית ייצור ותעודת משלוח.
+        המערכת בבנייה. פועלים: כניסה והרשאות, סנכרון מחשבשבת, לקוחות והסכמי מחיר, פניות ומעקב, הצעות מחיר ואישורן. הזמנות ושינויים בהן, תוכנית ייצור. הבאים בתור: הזמנות קבועות ותעודת משלוח.
         {s.customers === 0 ? " עדיין לא נטענו לקוחות: יש להריץ סנכרון במסך הלקוחות." : ""}
       </p>
     </div>
