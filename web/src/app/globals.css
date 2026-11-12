@@ -49,3 +49,23 @@ body {
   main { max-width: none; padding: 0; }
   .quote-doc { border: 0; padding: 0; }
 }
+
+/* Route map: a numbered marker per stop. A delivered stop is hollow, a point being placed is dashed. */
+.route-pin {
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  background: #0f6b5c;
+  color: #fff;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+}
+.route-pin-done { background: #fff; color: #0f6b5c; border-color: #0f6b5c; }
+.route-pin-new { background: #16211e; border-style: dashed; font-size: 20px; }
+/* Leaflet's panes use z-index up to 1000; keep them under the app's own header and dialogs. */
+#route-map { isolation: isolate; }

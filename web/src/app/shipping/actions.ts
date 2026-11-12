@@ -1,9 +1,11 @@
 "use server";
 
 import { refresh } from "next/cache";
-import { withTransaction } from "@/lib/db";
+import { query, withTransaction } from "@/lib/db";
 import { assertPermission } from "@/lib/auth";
 import { resolveEvent } from "@/lib/alerts-core";
+import { clearLocation, GeoError, pendingForRoute, recordSearch, setManualLocation } from "@/lib/geo-core";
+import { geocoderEnabled, searchAddress } from "@/lib/geo";
 import { assignDelivery, moveAddress, moveStop, planDay, saveDriver, saveRoute, setAddressRoute, setDailyDriver, setDriverActive, setRouteActive, ShippingError } from "@/lib/shipping-core";
 
 export type ShippingState = { error?: string; ok?: string };
@@ -137,4 +139,69 @@ export async function resolveAlertAction(_prev: ShippingState, fd: FormData): Pr
   } catch (e) {
     return { error: message(e) };
   }
+}
+
+// ---------- route map
+
+/** Searches the addresses of one daily route that are not on the map yet. Only street and city are sent out. */
+export async function locateAddressesAction(_prev: ShippingState, fd: FormData): Promise<ShippingState> {
+  await assertPermission("shipping.manage");
+  const dailyRouteId = s(fd, "daily_route_id");
+  if (!isUuid(dailyRouteId)) return { error: "הקו היומי לא נמצא." };
+  if (!geocoderEnabled()) return { error: "איתור הכתובות כבוי בהגדרות השרת. אפשר למקם כתובות על המפה ידנית." };
+  const BATCH = 20;
+  const pending = await pendingForRoute(query, dailyRouteId);
+  let found = 0;
+  let missing = 0;
+  let failures = 0;
+  let done = 0;
+  // Not inside one transaction: each search takes a second, and every answer is kept even if a later one fails.
+  for (const a of pending.slice(0, BATCH)) {
+    if (a.query === null) {
+      await recordSearch(query, a.id, null, null);
+      missing++;
+      done++;
+      continue;
+    }
+    const answer = await searchAddress(a.query);
+    if (answer.failed) {
+      if (++failures >= 2) break;
+      continue;
+    }
+    await recordSearch(query, a.id, a.query, answer.point);
+    if (answer.point) found++;
+    else missing++;
+    done++;
+  }
+  refresh();
+  if (pending.length === 0) return { ok: "אין כתובות שמחכות לאיתור." };
+  const parts = [`אותרו ${found} כתובות.`];
+  if (missing > 0) parts.push(`${missing} לא אותרו, ואפשר למקם אותן ידנית.`);
+  if (failures > 0) parts.push("שירות האיתור לא ענה לחלק מהבקשות. אפשר לנסות שוב בעוד כמה דקות.");
+  const left = pending.length - done;
+  if (left > 0 && failures === 0) parts.push(`נותרו ${left} כתובות. יש ללחוץ שוב כדי להמשיך.`);
+  return found === 0 && failures > 0 ? { error: parts.slice(1).join(" ") } : { ok: parts.join(" ") };
+}
+
+export async function placeAddressAction(_prev: ShippingState, fd: FormData): Promise<ShippingState> {
+  const user = await assertPermission("shipping.manage");
+  const addressId = s(fd, "address_id");
+  const lat = Number(s(fd, "lat"));
+  const lng = Number(s(fd, "lng"));
+  if (!isUuid(addressId)) return { error: "הכתובת לא נמצאה." };
+  if (s(fd, "lat") === "" || s(fd, "lng") === "") return { error: "יש ללחוץ על המפה במקום של הכתובת." };
+  try {
+    await withTransaction((q) => setManualLocation(q, addressId, { lat, lng }, user.id));
+    refresh();
+    return { ok: "המיקום נשמר." };
+  } catch (e) {
+    return { error: e instanceof GeoError ? e.message : message(e) };
+  }
+}
+
+export async function clearLocationAction(fd: FormData): Promise<void> {
+  const user = await assertPermission("shipping.manage");
+  const addressId = s(fd, "address_id");
+  if (isUuid(addressId)) await withTransaction((q) => clearLocation(q, addressId, user.id)).catch(() => {});
+  refresh();
 }
