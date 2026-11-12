@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 
 // The weekly template of a standing order: one row per product, one column per day, a quantity in each cell.
 type State = { error?: string; ok?: string };
-export type StandingRow = { key: string; sku: string; qty: string[] };
+export type StandingRow = { key: string; sku: string; variantId: string; qty: string[] };
 export type StandingInitial = {
   standingId: string;
   customerId: string;
@@ -31,7 +31,7 @@ export function StandingEditor({
   action,
 }: {
   initial: StandingInitial;
-  products: { sku: string; name: string }[];
+  products: { sku: string; name: string; variants: { id: number; name: string }[] }[];
   addresses: { id: string; text: string }[];
   action: (prev: State, formData: FormData) => Promise<State>;
 }) {
@@ -39,7 +39,7 @@ export function StandingEditor({
   const [rows, setRows] = useState<StandingRow[]>(initial.rows);
   const [head, setHead] = useState({ addressId: initial.addressId, windowFrom: initial.windowFrom, windowTo: initial.windowTo, validFrom: initial.validFrom, validTo: initial.validTo, productionNotes: initial.productionNotes, shippingNotes: initial.shippingNotes });
   const setH = (k: keyof typeof head) => (e: { target: { value: string } }) => setHead((h) => ({ ...h, [k]: e.target.value }));
-  const payload = JSON.stringify({ ...head, rows: rows.filter((r) => r.sku).map((r) => ({ sku: r.sku, qty: r.qty.map(num) })) });
+  const payload = JSON.stringify({ ...head, rows: rows.filter((r) => r.sku).map((r) => ({ sku: r.sku, variantId: r.variantId ? Number(r.variantId) : null, qty: r.qty.map(num) })) });
   const dayTotals = DAYS.map((_, d) => rows.reduce((s, r) => s + num(r.qty[d]), 0));
 
   return (
@@ -65,9 +65,9 @@ export function StandingEditor({
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={r.key} className="border-b border-line">
+                <tr key={r.key} className="border-b border-line align-top">
                   <td className="px-1.5 py-2">
-                    <select aria-label={`מוצר, שורה ${i + 1}`} data-st-sku={i} value={r.sku} onChange={(e) => setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, sku: e.target.value } : x)))} className={`${field} max-w-56`}>
+                    <select aria-label={`מוצר, שורה ${i + 1}`} data-st-sku={i} value={r.sku} onChange={(e) => setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, sku: e.target.value, variantId: "" } : x)))} className={`${field} max-w-56`}>
                       <option value="">בחירה</option>
                       {products.map((p) => (
                         <option key={p.sku} value={p.sku}>
@@ -75,6 +75,18 @@ export function StandingEditor({
                         </option>
                       ))}
                     </select>
+                    {(products.find((p) => p.sku === r.sku)?.variants.length ?? 0) > 0 ? (
+                      <select aria-label={`סוג, שורה ${i + 1}`} data-st-variant={i} value={r.variantId} onChange={(e) => setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, variantId: e.target.value } : x)))} className={`${field} mt-1 block max-w-56`}>
+                        <option value="">בחירת סוג</option>
+                        {products
+                          .find((p) => p.sku === r.sku)!
+                          .variants.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name}
+                            </option>
+                          ))}
+                      </select>
+                    ) : null}
                   </td>
                   {DAYS.map((d, k) => (
                     <td key={d} className="px-1.5 py-2">
@@ -108,7 +120,7 @@ export function StandingEditor({
             </tbody>
           </table>
         </div>
-        <button type="button" id="st-add-row" onClick={() => setRows((rs) => [...rs, { key: `n${++counter}`, sku: "", qty: DAYS.map(() => "") }])} className="mt-3 rounded-lg border border-line px-4 py-2">
+        <button type="button" id="st-add-row" onClick={() => setRows((rs) => [...rs, { key: `n${++counter}`, sku: "", variantId: "", qty: DAYS.map(() => "") }])} className="mt-3 rounded-lg border border-line px-4 py-2">
           הוסף מוצר
         </button>
       </section>

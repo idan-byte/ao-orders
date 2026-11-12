@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { Loading } from "@/components/loading";
@@ -29,6 +30,7 @@ async function CatalogContent() {
   const { user, allowed } = await requirePermission("catalog.view");
   if (!allowed) return <NoAccess />;
   const showPrices = can(user.role, "prices.view");
+  const mayEdit = can(user.role, "catalog.edit");
   const rows = await query<ProductRow>(`
     select p.sku, p.name, p.base_price::text, d.name as department, o.default_shift,
            (select count(*)::int from product_variants v where v.sku = p.sku and v.active) as variants
@@ -71,7 +73,15 @@ async function CatalogContent() {
                 {items.map((r) => (
                   <tr key={r.sku} className="border-b border-line last:border-0">
                     <td className="px-2 py-2">{r.sku}</td>
-                    <td className="px-2 py-2">{r.name}</td>
+                    <td className="px-2 py-2">
+                      {mayEdit ? (
+                        <Link href={`/catalog/${encodeURIComponent(r.sku)}`} data-product={r.sku} className="text-accent underline">
+                          {r.name}
+                        </Link>
+                      ) : (
+                        r.name
+                      )}
+                    </td>
                     <td className="px-2 py-2">{r.department && r.default_shift !== null ? SHIFTS[r.default_shift] : ""}</td>
                     <td className="px-2 py-2">{r.variants || <span className="text-muted">טרם הוגדרו</span>}</td>
                     {showPrices ? (

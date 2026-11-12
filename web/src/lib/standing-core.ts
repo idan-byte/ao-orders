@@ -1,6 +1,7 @@
 // Standing orders: a weekly template per customer, single-day exceptions, pauses, and generating real orders.
 // No dependency on Next.js.
 import type { Q } from "./auth-core.ts";
+import { CatalogError, checkVariants } from "./catalog-core.ts";
 import { resolvePrice } from "./customers-core.ts";
 import { VAT_RATE } from "./quote-totals.ts";
 
@@ -44,6 +45,11 @@ export async function saveStanding(q: Q, id: string | null, input: StandingInput
   for (const sku of new Set(lines.map((l) => l.sku))) {
     const [p] = await q("select 1 from products where sku = $1", [sku]);
     if (!p) throw new StandingError(`המק״ט ${sku} אינו קיים בקטלוג.`);
+  }
+  try {
+    await checkVariants(q, lines);
+  } catch (e) {
+    throw new StandingError(e instanceof CatalogError ? e.message.replace(/^שורה \d+: /, "") : "בדיקת הסוגים נכשלה.");
   }
   const [c] = await q("select 1 from customers where id = $1 and active", [input.customerId]);
   if (!c) throw new StandingError("הלקוח לא נמצא.");

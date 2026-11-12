@@ -9,6 +9,7 @@ import { CopyLink } from "@/components/copy-link";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { QuoteDocument } from "@/components/quote-document";
+import { variantsBySku } from "@/lib/orders-data";
 import { LinesEditor, type EditorInitial, type EditorProduct } from "@/components/lines-editor";
 import { approveManualAction, rejectQuoteAction, saveQuoteAction } from "../actions";
 
@@ -54,12 +55,12 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
 
   let editor: { initial: EditorInitial; products: EditorProduct[]; addresses: { id: string; text: string }[] } | null = null;
   if (canEdit) {
-    const lines = await query<{ id: string; sku: string; description: string; quantity: number; unit_price: number; discount_pct: number; delivery_date: string | null }>(
-      "select id::text, sku, description, quantity::float, unit_price::float, discount_pct::float, delivery_date::text from quote_lines where quote_version_id = $1 order by position",
+    const lines = await query<{ id: string; sku: string; variant_id: number | null; description: string; quantity: number; unit_price: number; discount_pct: number; delivery_date: string | null }>(
+      "select id::text, sku, variant_id, description, quantity::float, unit_price::float, discount_pct::float, delivery_date::text from quote_lines where quote_version_id = $1 order by position",
       [latest.id],
     );
     const pricingDate = latest.delivery_date ?? quote.today;
-    const products = await query<EditorProduct & { agreed_price: number | null; base_price: number }>(
+    const products = await query<Omit<EditorProduct, "variants"> & { agreed_price: number | null; base_price: number }>(
       `select p.sku, p.name, p.vat_exempt as "vatExempt", p.base_price::float as base_price,
               (select cp.price::float from customer_prices cp
                where cp.customer_id = $1 and cp.sku = p.sku and cp.approved_at is not null and cp.valid_from <= $2::date and (cp.valid_to is null or cp.valid_to >= $2::date)
@@ -70,14 +71,15 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
       [quote.customer_id, pricingDate, latest.id],
     );
     const addresses = await query<{ id: string; text: string }>("select id::text, concat_ws(', ', street, city) as text from customer_addresses where customer_id = $1 order by is_default desc, street", [quote.customer_id]);
+    const variants = await variantsBySku("quote", latest.id);
     editor = {
-      products: products.map((p) => ({ sku: p.sku, name: p.name, vatExempt: p.vatExempt, price: p.agreed_price ?? p.base_price, agreed: p.agreed_price !== null })),
+      products: products.map((p) => ({ variants: variants.get(p.sku) ?? [], sku: p.sku, name: p.name, vatExempt: p.vatExempt, price: p.agreed_price ?? p.base_price, agreed: p.agreed_price !== null })),
       addresses,
       initial: {
         quoteId: id,
         version: latest.version,
         customerVatExempt: quote.vat_exempt,
-        lines: lines.map((l) => ({ key: l.id, sku: l.sku, description: l.description, quantity: String(l.quantity), unitPrice: String(l.unit_price), discountPct: l.discount_pct ? String(l.discount_pct) : "", deliveryDate: l.delivery_date ?? "" })),
+        lines: lines.map((l) => ({ key: l.id, sku: l.sku, variantId: l.variant_id === null ? "" : String(l.variant_id), description: l.description, quantity: String(l.quantity), unitPrice: String(l.unit_price), discountPct: l.discount_pct ? String(l.discount_pct) : "", deliveryDate: l.delivery_date ?? "" })),
         discountPct: latest.discount_pct ? String(latest.discount_pct) : "",
         deliveryFee: latest.delivery_fee ? String(latest.delivery_fee) : "",
         deliveryDate: latest.delivery_date ?? "",

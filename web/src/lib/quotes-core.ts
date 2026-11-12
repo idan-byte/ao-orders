@@ -1,6 +1,7 @@
 // Quote logic: totals, versions, sending, approval and conversion to an order. No dependency on Next.js.
 import { randomBytes } from "node:crypto";
 import type { Q } from "./auth-core.ts";
+import { CatalogError, checkVariants } from "./catalog-core.ts";
 
 export * from "./quote-totals.ts";
 import { computeTotals, VAT_RATE, DEFAULT_VALID_DAYS, type LineInput, type Totals } from "./quote-totals.ts";
@@ -83,6 +84,11 @@ export async function saveDraft(q: Q, quoteId: string, d: DraftInput): Promise<{
   if (d.addressId) {
     const [a] = await q("select 1 from customer_addresses where id = $1 and customer_id = $2", [d.addressId, quote.customer_id]);
     if (!a) throw new QuoteError("כתובת האספקה אינה שייכת ללקוח.");
+  }
+  try {
+    await checkVariants(q, d.lines);
+  } catch (e) {
+    throw new QuoteError(e instanceof CatalogError ? e.message : "בדיקת הסוגים נכשלה.");
   }
 
   let v = await latestVersion(q, quoteId);

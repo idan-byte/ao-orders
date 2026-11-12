@@ -25,8 +25,8 @@ async function refuses(label, fn, fragment) {
 
 await q("insert into departments (name) values ('כריכים'), ('מטבח חם')");
 const [sand, hot] = (await q("select id from departments order by id")).map((r) => r.id);
-await q(`insert into products (sku, name, base_price) values ('50002', 'כריך 120 גרם', 10), ('50042', 'טוסט', 5.62), ('50010', 'חמגשית', 21.74), ('50029', 'הובלה', 173.16)`);
-await q("insert into product_ops (sku, orderable, department_id, default_shift) values ('50002', true, $1, 1), ('50042', true, $1, 2), ('50010', true, $2, 0), ('50029', true, null, 2)", [sand, hot]);
+await q(`insert into products (sku, name, base_price) values ('50002', 'כריך 120 גרם', 10), ('50021', 'כריך לחמניה', 5.8), ('50042', 'טוסט', 5.62), ('50010', 'חמגשית', 21.74), ('50029', 'הובלה', 173.16)`);
+await q("insert into product_ops (sku, orderable, department_id, default_shift) values ('50002', true, $1, 1), ('50021', true, $1, 1), ('50042', true, $1, 2), ('50010', true, $2, 0), ('50029', true, null, 2)", [sand, hot]);
 await q("insert into product_variants (sku, name) values ('50002', 'טונה'), ('50002', 'חביתה')");
 const [tuna, egg] = (await q("select id from product_variants order by id")).map((r) => r.id);
 const user = await one("insert into users (mobile, full_name, role) values ('0500000005', 'מנהל כריכים', 'dept_manager') returning id::text");
@@ -68,8 +68,9 @@ await updateDelivery(q, d1, { lines: [{ sku: "50002", variantId: tuna, quantity:
 const late = (await lockedPlans(q, DAY, sand))[0].changes;
 check("late change shows old and new totals per product", late.map((c) => [c.label, c.before, c.after]), [["כריך 120 גרם · חביתה", 90, 50], ["כריך 120 גרם · טונה", 160, 180]]);
 check("the live plan already has the new numbers", view(await planRows(q, DAY, sand)).slice(0, 2), [[1, "50002", "טונה", 180], [1, "50002", "חביתה", 50]]);
-await createOrder(q, cust[1], user.id, draft([L("50002", 10, null)]));
-check("a brand-new late order also shows up as a change", (await lockedPlans(q, DAY, sand))[0].changes.map((c) => [c.label, c.before, c.after]), [["כריך 120 גרם", 0, 10], ["כריך 120 גרם · חביתה", 90, 50], ["כריך 120 גרם · טונה", 160, 180]]);
+await createOrder(q, cust[1], user.id, draft([L("50021", 10)]));
+await refuses("a product with variants cannot be ordered without one", () => createOrder(q, cust[1], user.id, draft([L("50002", 10, null)])), "יש לבחור אחד מהם");
+check("a brand-new late order also shows up as a change", (await lockedPlans(q, DAY, sand))[0].changes.map((c) => [c.label, c.before, c.after]), [["כריך 120 גרם · חביתה", 90, 50], ["כריך 120 גרם · טונה", 160, 180], ["כריך לחמניה", 0, 10]]);
 
 check("acknowledging records the changes", await acknowledgeChanges(q, DAY, sand, planId, user.id), 3);
 check("after acknowledging there is nothing pending, and the log keeps the history", [(await lockedPlans(q, DAY, sand))[0].changes.length, (await q("select sku, old_quantity::float as o, new_quantity::float as n, acknowledged_by::text = $1 as mine from production_changes order by sku, variant_id nulls first", [user.id])).length], [0, 3]);

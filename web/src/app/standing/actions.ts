@@ -18,7 +18,7 @@ export async function saveStandingAction(_prev: StandingState, fd: FormData): Pr
   try {
     const p = JSON.parse(s(fd, "payload")) as Record<string, unknown>;
     const str = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
-    const rows = Array.isArray(p.rows) ? (p.rows as { sku?: unknown; qty?: unknown }[]) : [];
+    const rows = Array.isArray(p.rows) ? (p.rows as { sku?: unknown; variantId?: unknown; qty?: unknown }[]) : [];
     input = {
       customerId: s(fd, "customer_id"),
       addressId: str(p.addressId),
@@ -28,7 +28,7 @@ export async function saveStandingAction(_prev: StandingState, fd: FormData): Pr
       validTo: str(p.validTo),
       productionNotes: str(p.productionNotes),
       shippingNotes: str(p.shippingNotes),
-      lines: rows.flatMap((r) => (Array.isArray(r.qty) ? r.qty : []).map((q, weekday) => ({ weekday, sku: String(r.sku ?? ""), quantity: Number(q) || 0 }))).filter((l) => l.sku && l.quantity > 0),
+      lines: rows.flatMap((r) => (Array.isArray(r.qty) ? r.qty : []).map((q, weekday) => ({ weekday, sku: String(r.sku ?? ""), variantId: Number.isInteger(r.variantId) ? (r.variantId as number) : null, quantity: Number(q) || 0 }))).filter((l) => l.sku && l.quantity > 0),
     };
   } catch {
     return { error: "הנתונים שנשלחו אינם תקינים." };

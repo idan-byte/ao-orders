@@ -16,7 +16,7 @@ const s = (fd: FormData, k: string) => String(fd.get(k) ?? "");
 const isUuid = (v: string) => /^[0-9a-f-]{36}$/i.test(v);
 const LOCKED = "תוכנית הייצור ליום הזה כבר נעולה. שינוי אחרי נעילה דורש אישור מנהל.";
 
-type RawLine = { sku: string; quantity: number; unitPrice: number; discountPct: number; deliveryDate: string | null };
+type RawLine = { sku: string; variantId: number | null; quantity: number; unitPrice: number; discountPct: number; deliveryDate: string | null };
 type Parsed = { lines: RawLine[]; discountPct: number; deliveryFee: number; deliveryDate: string | null; windowFrom: string | null; windowTo: string | null; addressId: string | null; shippingNotes: string | null; productionNotes: string | null };
 
 function parse(raw: string): Parsed | null {
@@ -24,7 +24,7 @@ function parse(raw: string): Parsed | null {
     const p = JSON.parse(raw) as Record<string, unknown>;
     const str = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
     return {
-      lines: (Array.isArray(p.lines) ? p.lines : []).map((l: Record<string, unknown>) => ({ sku: String(l.sku ?? ""), quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), discountPct: Number(l.discountPct ?? 0), deliveryDate: str(l.deliveryDate) })),
+      lines: (Array.isArray(p.lines) ? p.lines : []).map((l: Record<string, unknown>) => ({ sku: String(l.sku ?? ""), variantId: Number.isInteger(l.variantId) ? (l.variantId as number) : null, quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), discountPct: Number(l.discountPct ?? 0), deliveryDate: str(l.deliveryDate) })),
       discountPct: Number(p.discountPct ?? 0),
       deliveryFee: Number(p.deliveryFee ?? 0),
       deliveryDate: str(p.deliveryDate),
@@ -58,7 +58,7 @@ export async function createOrderAction(_prev: OrderActionState, fd: FormData): 
     p.discountPct = 0;
   }
   const draft: DraftInput = {
-    lines: p.lines.map((l) => ({ sku: l.sku, description: l.sku, quantity: l.quantity, unitPrice: l.unitPrice, discountPct: l.discountPct, deliveryDate: l.deliveryDate })),
+    lines: p.lines.map((l) => ({ sku: l.sku, variantId: l.variantId, description: l.sku, quantity: l.quantity, unitPrice: l.unitPrice, discountPct: l.discountPct, deliveryDate: l.deliveryDate })),
     discountPct: p.discountPct,
     deliveryFee: p.deliveryFee,
     deliveryDate: p.deliveryDate,
@@ -100,7 +100,7 @@ export async function updateDeliveryAction(_prev: OrderActionState, fd: FormData
   }
   if (!can(user.role, "prices.edit")) {
     // Existing lines keep the price they already have; a newly added product gets the customer's price.
-    const existing = new Map((await query<{ sku: string; unit_price: number; discount_pct: number }>("select sku, unit_price::float, discount_pct::float from delivery_lines where delivery_id = $1", [deliveryId])).map((l) => [l.sku, l]));
+    const existing = new Map((await query<{ sku: string; unit_price: number; discount_pct: number }>("select sku, unit_price::float, discount_pct::float from delivery_lines where delivery_id = $1 order by id desc", [deliveryId])).map((l) => [l.sku, l]));
     for (const l of p.lines) {
       const old = existing.get(l.sku);
       if (old) {

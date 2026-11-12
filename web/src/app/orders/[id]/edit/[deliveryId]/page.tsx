@@ -47,8 +47,8 @@ async function EditDelivery({ params }: { params: PageProps<"/orders/[id]/edit/[
       </div>
     );
   }
-  const lines = await query<{ id: string; sku: string; name: string; quantity: number; unit_price: number; discount_pct: number }>(
-    "select l.id::text, l.sku, p.name, l.quantity::float, l.unit_price::float, l.discount_pct::float from delivery_lines l join products p on p.sku = l.sku where l.delivery_id = $1 order by l.id",
+  const lines = await query<{ id: string; sku: string; variant_id: number | null; name: string; quantity: number; unit_price: number; discount_pct: number }>(
+    "select l.id::text, l.sku, l.variant_id, p.name, l.quantity::float, l.unit_price::float, l.discount_pct::float from delivery_lines l join products p on p.sku = l.sku where l.delivery_id = $1 order by l.id",
     [deliveryId],
   );
   const products = await productsForCustomer(d.customer_id, d.delivery_date, deliveryId);
@@ -77,7 +77,7 @@ async function EditDelivery({ params }: { params: PageProps<"/orders/[id]/edit/[
           quoteId: deliveryId,
           version: 1,
           customerVatExempt: d.vat_exempt,
-          lines: lines.map((l) => ({ key: l.id, sku: l.sku, description: l.name, quantity: String(l.quantity), unitPrice: String(l.unit_price), discountPct: l.discount_pct ? String(l.discount_pct) : "", deliveryDate: "" })),
+          lines: lines.map((l) => ({ key: l.id, sku: l.sku, variantId: l.variant_id === null ? "" : String(l.variant_id), description: l.name, quantity: String(l.quantity), unitPrice: String(l.unit_price), discountPct: l.discount_pct ? String(l.discount_pct) : "", deliveryDate: "" })),
           discountPct: "",
           deliveryFee: "",
           deliveryDate: d.delivery_date,

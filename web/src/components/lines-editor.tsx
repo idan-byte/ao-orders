@@ -8,8 +8,9 @@ import { computeTotals, VAT_RATE } from "@/lib/quote-totals";
 type State = { error?: string; ok?: string };
 export type EditorMode = "quote" | "order" | "delivery";
 
-export type EditorProduct = { sku: string; name: string; price: number; agreed: boolean; vatExempt: boolean };
-export type EditorLine = { key: string; sku: string; description: string; quantity: string; unitPrice: string; discountPct: string; deliveryDate: string };
+export type EditorVariant = { id: number; name: string };
+export type EditorProduct = { sku: string; name: string; price: number; agreed: boolean; vatExempt: boolean; variants: EditorVariant[] };
+export type EditorLine = { key: string; sku: string; variantId: string; description: string; quantity: string; unitPrice: string; discountPct: string; deliveryDate: string };
 export type EditorInitial = {
   quoteId: string;
   version: number;
@@ -78,7 +79,7 @@ export function LinesEditor({
     ...head,
     discountPct: num(head.discountPct) || 0,
     deliveryFee: num(head.deliveryFee) || 0,
-    lines: lines.filter((l) => l.sku).map((l) => ({ sku: l.sku, description: l.description, quantity: num(l.quantity), unitPrice: num(l.unitPrice), discountPct: num(l.discountPct) || 0, deliveryDate: l.deliveryDate })),
+    lines: lines.filter((l) => l.sku).map((l) => ({ sku: l.sku, variantId: l.variantId ? Number(l.variantId) : null, description: l.description, quantity: num(l.quantity), unitPrice: num(l.unitPrice), discountPct: num(l.discountPct) || 0, deliveryDate: l.deliveryDate })),
   });
 
   return (
@@ -152,7 +153,7 @@ export function LinesEditor({
                         value={l.sku}
                         onChange={(e) => {
                           const np = bySku.get(e.target.value);
-                          patch(l.key, { sku: e.target.value, description: np?.name ?? "", unitPrice: np ? String(np.price) : "" });
+                          patch(l.key, { sku: e.target.value, variantId: "", description: np?.name ?? "", unitPrice: np ? String(np.price) : "" });
                         }}
                         className={`${field} max-w-56`}
                       >
@@ -163,6 +164,27 @@ export function LinesEditor({
                           </option>
                         ))}
                       </select>
+                      {p && p.variants.length > 0 ? (
+                        <select
+                          aria-label={`סוג, שורה ${i + 1}`}
+                          data-line-variant={i}
+                          value={l.variantId}
+                          onChange={(e) => {
+                            const v = p.variants.find((x) => String(x.id) === e.target.value);
+                            // The description follows the variant unless someone typed their own wording.
+                            const untouched = l.description === "" || l.description === p.name || p.variants.some((x) => l.description === `${p.name} · ${x.name}`);
+                            patch(l.key, { variantId: e.target.value, ...(untouched ? { description: v ? `${p.name} · ${v.name}` : p.name } : {}) });
+                          }}
+                          className={`${field} mt-1 block max-w-56`}
+                        >
+                          <option value="">בחירת סוג</option>
+                          {p.variants.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
                       {p ? <div className="mt-1 text-xs text-muted">{p.agreed ? "מחיר הסכם" : p.price > 0 ? "מחיר בסיס" : "אין מחיר בסיס"}</div> : null}
                     </td>
                     <td className="px-1.5 py-2">
@@ -195,7 +217,7 @@ export function LinesEditor({
         <button
           type="button"
           id="q-add-line"
-          onClick={() => setLines((ls) => [...ls, { key: newKey(), sku: "", description: "", quantity: "", unitPrice: "", discountPct: "", deliveryDate: "" }])}
+          onClick={() => setLines((ls) => [...ls, { key: newKey(), sku: "", variantId: "", description: "", quantity: "", unitPrice: "", discountPct: "", deliveryDate: "" }])}
           className="mt-3 rounded-lg border border-line px-4 py-2"
         >
           הוסף שורה

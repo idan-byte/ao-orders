@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
-import { addressesOf } from "@/lib/orders-data";
+import { addressesOf, variantsBySku } from "@/lib/orders-data";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { StandingEditor } from "@/components/standing-editor";
@@ -32,7 +32,8 @@ async function NewStanding({ searchParams }: { searchParams: PageProps<"/standin
       </div>
     );
   }
-  const products = await query<{ sku: string; name: string }>("select p.sku, p.name from products p join product_ops o on o.sku = p.sku where o.orderable order by p.name");
+  const variants = await variantsBySku(null);
+  const products = (await query<{ sku: string; name: string }>("select p.sku, p.name from products p join product_ops o on o.sku = p.sku where o.orderable order by p.name")).map((p) => ({ ...p, variants: variants.get(p.sku) ?? [] }));
   const addresses = await addressesOf(customer.id);
 
   return (
