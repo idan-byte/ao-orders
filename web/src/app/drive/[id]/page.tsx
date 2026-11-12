@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { missingFromRoute, progressLabel, routeAccess } from "@/lib/loading-core";
 import { ActionForm } from "@/components/action-form";
+import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { TapAction } from "@/components/tap-action";
@@ -21,9 +22,12 @@ type Row = { id: string; order_id: string; number: number; customer: string; add
 
 export default function WorkRoutePage({ params, searchParams }: PageProps<"/drive/[id]">) {
   return (
-    <Suspense fallback={<Loading />}>
-      <WorkRoute params={params} searchParams={searchParams} />
-    </Suspense>
+    <>
+      <LiveRefresh />
+      <Suspense fallback={<Loading />}>
+        <WorkRoute params={params} searchParams={searchParams} />
+      </Suspense>
+    </>
   );
 }
 

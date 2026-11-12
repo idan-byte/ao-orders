@@ -43,7 +43,7 @@ export async function UserNav() {
   const settings = allowed(SETTINGS);
   return (
     <>
-      <nav className="flex min-w-0 flex-1 flex-wrap gap-1" aria-label="מסכים">
+      <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1" aria-label="מסכים">
         {can(user.role, "dashboard.view") ? <NavLink href="/" label="דשבורד" /> : null}
         {GROUPS.map((g) => {
           const items = allowed(g.items);
@@ -52,7 +52,8 @@ export async function UserNav() {
         })}
       </nav>
       <div className="flex items-center gap-3 text-sm text-muted">
-        <span>
+        {/* On a phone the name gives way to the menu; it is back from tablet width up. */}
+        <span className="hidden sm:inline">
           {user.fullName} · {isRole(user.role) ? ROLES[user.role] : user.role}
         </span>
         {settings.length > 0 ? (

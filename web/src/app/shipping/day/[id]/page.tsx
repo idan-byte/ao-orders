@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth";
 import { STATUS_LABEL } from "@/lib/orders-core";
 import { routeDeliveries, type PlanDelivery } from "@/lib/shipping-core";
 import { ActionForm } from "@/components/action-form";
+import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { PrintButton } from "@/components/print-button";
@@ -17,9 +18,12 @@ const dayFmt = new Intl.DateTimeFormat("he-IL", { timeZone: "UTC", weekday: "lon
 
 export default function DailyRoutePage({ params, searchParams }: PageProps<"/shipping/day/[id]">) {
   return (
-    <Suspense fallback={<Loading />}>
-      <DailyRoute params={params} searchParams={searchParams} />
-    </Suspense>
+    <>
+      <LiveRefresh />
+      <Suspense fallback={<Loading />}>
+        <DailyRoute params={params} searchParams={searchParams} />
+      </Suspense>
+    </>
   );
 }
 

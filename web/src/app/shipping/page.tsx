@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth";
 import { dayRoutes, unassigned } from "@/lib/shipping-core";
 import { shippingAlerts } from "@/lib/alerts-core";
 import { ActionForm } from "@/components/action-form";
+import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { assignDeliveryAction, planDayAction } from "./actions";
@@ -17,9 +18,12 @@ const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{
 
 export default function ShippingPage({ searchParams }: PageProps<"/shipping">) {
   return (
-    <Suspense fallback={<Loading />}>
-      <Shipping searchParams={searchParams} />
-    </Suspense>
+    <>
+      <LiveRefresh />
+      <Suspense fallback={<Loading />}>
+        <Shipping searchParams={searchParams} />
+      </Suspense>
+    </>
   );
 }
 
