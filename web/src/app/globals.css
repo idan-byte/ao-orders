@@ -69,3 +69,20 @@ body {
 .route-pin-new { background: #16211e; border-style: dashed; font-size: 20px; }
 /* Leaflet's panes use z-index up to 1000; keep them under the app's own header and dialogs. */
 #route-map { isolation: isolate; }
+
+/* Delivery labels: two to a row on A4, always black on white so the QR reads, never split across pages. */
+.label-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(92mm, 1fr)); gap: 4mm; }
+.label { display: flex; gap: 3mm; align-items: center; background: #fff; color: #000; border: 1px solid #000; border-radius: 2mm; padding: 3mm; break-inside: avoid; min-height: 48mm; }
+.label-qr { flex: none; width: 36mm; height: 36mm; }
+.label-qr svg { width: 100%; height: 100%; display: block; }
+.label-text { min-width: 0; flex: 1; line-height: 1.25; }
+.label-route { font-size: 10pt; }
+.label-stop { font-size: 20pt; font-weight: 700; }
+.label-customer { font-size: 13pt; font-weight: 700; overflow-wrap: anywhere; }
+.label-line { font-size: 10pt; overflow-wrap: anywhere; }
+.label-note { font-weight: 700; }
+.label-code { margin-top: 1mm; font-family: ui-monospace, Consolas, monospace; font-size: 12pt; letter-spacing: 0.06em; }
+@media print {
+  .label-sheet { grid-template-columns: 1fr 1fr; }
+  @page { margin: 8mm; }
+}
