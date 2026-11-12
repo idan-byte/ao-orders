@@ -6,6 +6,7 @@ import { query, withTransaction } from "@/lib/db";
 import { assertPermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { resolvePrice } from "@/lib/customers-core";
+import { isLockedFor } from "@/lib/production-core";
 import { advanceDelivery, cancelDelivery, createOrder, holdDelivery, OrderError, releaseDelivery, updateDelivery, type DeliveryStatus } from "@/lib/orders-core";
 import type { DraftInput } from "@/lib/quotes-core";
 
@@ -13,6 +14,7 @@ export type OrderActionState = { error?: string; ok?: string };
 const message = (e: unknown) => (e instanceof OrderError ? e.message : "הפעולה נכשלה. שום דבר לא נשמר.");
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "");
 const isUuid = (v: string) => /^[0-9a-f-]{36}$/i.test(v);
+const LOCKED = "תוכנית הייצור ליום הזה כבר נעולה. שינוי אחרי נעילה דורש אישור מנהל.";
 
 type RawLine = { sku: string; quantity: number; unitPrice: number; discountPct: number; deliveryDate: string | null };
 type Parsed = { lines: RawLine[]; discountPct: number; deliveryFee: number; deliveryDate: string | null; windowFrom: string | null; windowTo: string | null; addressId: string | null; shippingNotes: string | null; productionNotes: string | null };
@@ -68,6 +70,12 @@ export async function createOrderAction(_prev: OrderActionState, fd: FormData): 
     validUntil: null,
     paymentTerms: null,
   };
+  if (!can(user.role, "orders.change_locked")) {
+    for (const l of p.lines) {
+      const onDate = l.deliveryDate ?? p.deliveryDate;
+      if (onDate && (await isLockedFor(query, onDate, [l.sku]))) return { error: LOCKED };
+    }
+  }
   let orderId: string;
   try {
     orderId = (await withTransaction((q) => createOrder(q, customerId, user.id, draft))).orderId;
@@ -83,8 +91,13 @@ export async function updateDeliveryAction(_prev: OrderActionState, fd: FormData
   const p = parse(s(fd, "payload"));
   if (!isUuid(deliveryId) || !p || !p.deliveryDate) return { error: "יש לקבוע תאריך אספקה." };
 
-  const [del] = await query<{ order_id: string; customer_id: string }>("select d.order_id::text, o.customer_id::text from deliveries d join orders o on o.id = d.order_id where d.id = $1", [deliveryId]);
+  const [del] = await query<{ order_id: string; customer_id: string; delivery_date: string }>("select d.order_id::text, o.customer_id::text, d.delivery_date::text from deliveries d join orders o on o.id = d.order_id where d.id = $1", [deliveryId]);
   if (!del) return { error: "האספקה לא נמצאה." };
+  if (!can(user.role, "orders.change_locked")) {
+    const before = (await query<{ sku: string }>("select sku from delivery_lines where delivery_id = $1", [deliveryId])).map((l) => l.sku);
+    const skus = [...new Set([...before, ...p.lines.map((l) => l.sku)])];
+    if ((await isLockedFor(query, del.delivery_date, skus)) || (await isLockedFor(query, p.deliveryDate, skus))) return { error: LOCKED };
+  }
   if (!can(user.role, "prices.edit")) {
     // Existing lines keep the price they already have; a newly added product gets the customer's price.
     const existing = new Map((await query<{ sku: string; unit_price: number; discount_pct: number }>("select sku, unit_price::float, discount_pct::float from delivery_lines where delivery_id = $1", [deliveryId])).map((l) => [l.sku, l]));
@@ -144,6 +157,11 @@ export async function releaseAction(fd: FormData): Promise<void> {
 
 export async function cancelAction(_prev: OrderActionState, fd: FormData): Promise<OrderActionState> {
   const user = await assertPermission("orders.cancel");
+  if (!can(user.role, "orders.change_locked")) {
+    const [d] = await query<{ delivery_date: string }>("select delivery_date::text from deliveries where id = $1", [s(fd, "delivery_id")]);
+    const skus = (await query<{ sku: string }>("select sku from delivery_lines where delivery_id = $1", [s(fd, "delivery_id")])).map((l) => l.sku);
+    if (d && (await isLockedFor(query, d.delivery_date, skus))) return { error: LOCKED };
+  }
   try {
     await withTransaction((q) => cancelDelivery(q, s(fd, "delivery_id"), s(fd, "reason"), user.id));
     refresh();
