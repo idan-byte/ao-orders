@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
+import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 
@@ -13,9 +14,12 @@ const dateFmt = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", w
 // The page shell renders instantly; the data-dependent part streams in behind the Suspense boundary.
 export default function Home() {
   return (
-    <Suspense fallback={<Loading />}>
-      <HomeContent />
-    </Suspense>
+    <>
+      <LiveRefresh />
+      <Suspense fallback={<Loading />}>
+        <HomeContent />
+      </Suspense>
+    </>
   );
 }
 

@@ -4,6 +4,7 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { progressLabel, workRoutes } from "@/lib/loading-core";
+import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 
@@ -13,9 +14,12 @@ const dayFmt = new Intl.DateTimeFormat("he-IL", { timeZone: "UTC", weekday: "lon
 // shipping manager see all of them. Today and tomorrow, because loading often happens the evening before.
 export default function DrivePage() {
   return (
-    <Suspense fallback={<Loading />}>
-      <Drive />
-    </Suspense>
+    <>
+      <LiveRefresh />
+      <Suspense fallback={<Loading />}>
+        <Drive />
+      </Suspense>
+    </>
   );
 }
 

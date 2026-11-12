@@ -4,6 +4,7 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { ALERT_TYPE, recentlyHandled, shippingAlerts, type Severity } from "@/lib/alerts-core";
 import { ActionForm } from "@/components/action-form";
+import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { resolveAlertAction } from "../actions";
@@ -20,9 +21,12 @@ const SEVERITY: Record<Severity, { label: string; border: string }> = {
 
 export default function AlertsPage() {
   return (
-    <Suspense fallback={<Loading />}>
-      <Alerts />
-    </Suspense>
+    <>
+      <LiveRefresh />
+      <Suspense fallback={<Loading />}>
+        <Alerts />
+      </Suspense>
+    </>
   );
 }
 

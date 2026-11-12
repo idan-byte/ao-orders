@@ -6,6 +6,7 @@ import { can } from "@/lib/permissions";
 import { lockedPlans, lockTimes, planRows, planSources, SHIFTS } from "@/lib/production-core";
 import { ActionForm } from "@/components/action-form";
 import { isIsoDate, resolveDepartment } from "@/lib/production-access";
+import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { PrintButton } from "@/components/print-button";
@@ -19,9 +20,12 @@ const field = "rounded-lg border border-line bg-surface px-3 py-2 text-foregroun
 
 export default function ProductionPage({ searchParams }: PageProps<"/production">) {
   return (
-    <Suspense fallback={<Loading />}>
-      <Production searchParams={searchParams} />
-    </Suspense>
+    <>
+      <LiveRefresh />
+      <Suspense fallback={<Loading />}>
+        <Production searchParams={searchParams} />
+      </Suspense>
+    </>
   );
 }
 

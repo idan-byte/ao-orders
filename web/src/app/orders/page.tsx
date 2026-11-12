@@ -4,6 +4,7 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { DELIVERY_STATUSES, STATUS_LABEL } from "@/lib/orders-core";
+import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 
@@ -17,9 +18,12 @@ const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{
 
 export default function OrdersPage({ searchParams }: PageProps<"/orders">) {
   return (
-    <Suspense fallback={<Loading />}>
-      <OrdersContent searchParams={searchParams} />
-    </Suspense>
+    <>
+      <LiveRefresh />
+      <Suspense fallback={<Loading />}>
+        <OrdersContent searchParams={searchParams} />
+      </Suspense>
+    </>
   );
 }
 

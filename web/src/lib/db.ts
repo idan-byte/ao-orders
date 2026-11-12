@@ -80,23 +80,31 @@ export function getDb(): Promise<PGlite> {
   return (globalForDb.__aoDb ??= open());
 }
 
+// After a committed change the live counter moves, so open screens on other devices reload their data.
+// It moves only after the commit: a screen that sees the new value always finds the change itself.
+const changed = (db: PGlite) => db.query("select nextval('live_version')").catch(() => {});
+
 /** Runs several statements as one unit: either all of them take effect or none. */
 export async function withTransaction<T>(fn: (q: Q) => Promise<T>): Promise<T> {
   await connection();
   const db = await getDb();
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const q = (async (sql: string, params: unknown[] = []) => (await tx.query(sql, params)).rows) as Q;
     return fn(q);
   });
+  await changed(db);
+  return result;
 }
 
 /** The same, for background work that no request started (the scheduler). */
 export async function systemTransaction<T>(fn: (q: Q) => Promise<T>): Promise<T> {
   const db = await getDb();
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const q = (async (sql: string, params: unknown[] = []) => (await tx.query(sql, params)).rows) as Q;
     return fn(q);
   });
+  await changed(db);
+  return result;
 }
 
 export async function query<T extends Row = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
