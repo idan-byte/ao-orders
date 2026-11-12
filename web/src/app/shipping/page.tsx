@@ -90,6 +90,11 @@ async function Shipping({ searchParams }: { searchParams: PageProps<"/shipping">
               <span className="tabular-nums" data-counts>
                 {r.stops} עצירות · {r.deliveries} אספקות · {nf.format(r.units)} יח׳
               </span>
+              <span className="text-sm tabular-nums" data-progress>
+                {r.mode === "loading" ? "טעינה" : "הפצה"} · הועמסו {r.loaded}/{r.deliveries}
+                {r.mode === "unloading" ? ` · נמסרו ${r.delivered}/${r.deliveries}` : ""}
+              </span>
+              <progress value={r.mode === "loading" ? r.loaded : r.delivered} max={Math.max(1, r.deliveries)} className="h-2 w-full" aria-label="התקדמות" />
             </Link>
           ))}
         </div>

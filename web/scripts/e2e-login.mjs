@@ -59,7 +59,7 @@ try {
 
   // --- administrator
   const admin = await signIn(ADMIN);
-  check("admin navigation", await navLabels(admin.page), ["דשבורד", "מכירות", "הצעות מחיר", "הזמנות", "קבועות", "ייצור", "שילוח", "לקוחות", "קטלוג", "משתמשים"]);
+  check("admin navigation", await navLabels(admin.page), ["דשבורד", "מכירות", "הצעות מחיר", "הזמנות", "קבועות", "ייצור", "שילוח", "טעינה והפצה", "לקוחות", "קטלוג", "משתמשים"]);
   check("session cookie is not readable by scripts", await admin.page.evaluate(() => document.cookie.includes("ao_session")), false);
 
   await admin.page.goto(BASE + "/users");

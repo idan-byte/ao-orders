@@ -169,6 +169,7 @@ export async function planDay(q: Q, date: string, userId: string | null): Promis
     `select d.id::text, d.address_id::text, a.route_id, a.route_order
      from deliveries d join customer_addresses a on a.id = d.address_id join routes r on r.id = a.route_id and r.active
      where d.delivery_date = $1::date and d.daily_route_id is null and d.status in ${PLANNABLE}
+       and not exists (select 1 from daily_routes gone where gone.route_date = d.delivery_date and gone.route_id = a.route_id and gone.mode = 'unloading')
      order by a.route_id, a.route_order nulls last, d.window_from nulls last, d.id`,
     [date],
   );
@@ -207,14 +208,18 @@ export async function planDay(q: Q, date: string, userId: string | null): Promis
  * `permanent` also makes that line the address's permanent line, so tomorrow's planning does it by itself.
  */
 export async function assignDelivery(q: Q, deliveryId: string, routeId: number | null, permanent: boolean, userId: string): Promise<void> {
-  const [d] = await q<{ status: string; delivery_date: string; address_id: string | null; daily_route_id: string | null }>("select status::text, delivery_date::text, address_id::text, daily_route_id::text from deliveries where id = $1", [deliveryId]);
+  const [d] = await q<{ status: string; delivery_date: string; address_id: string | null; daily_route_id: string | null; loaded: boolean }>("select status::text, delivery_date::text, address_id::text, daily_route_id::text, loaded_at is not null as loaded from deliveries where id = $1", [deliveryId]);
   if (!d) throw new ShippingError("האספקה לא נמצאה.");
+  // Changing the assignment does not move anything physically. What is already on a vehicle is taken off it first.
+  if (d.loaded) throw new ShippingError("האספקה כבר הועמסה על הרכב. יש לבטל את סימון ההעמסה לפני שמעבירים אותה.");
   if (d.status === "cancelled" || d.status === "delivered" || d.status === "shipped") throw new ShippingError("אי אפשר לשבץ אספקה שכבר יצאה, נמסרה או בוטלה.");
   const from = d.daily_route_id;
   let to: string | null = null;
   if (routeId !== null) {
     to = await ensureDailyRoute(q, d.delivery_date, routeId);
     if (to !== from) {
+      const [target] = await q<{ mode: string }>("select mode from daily_routes where id = $1", [to]);
+      if (target.mode !== "loading") throw new ShippingError("הקו כבר יצא להפצה. אי אפשר להוסיף לו אספקות.");
       // Another delivery to the same address on that line means the same stop.
       const [same] = d.address_id ? await q<{ stop_order: number }>("select stop_order from deliveries where daily_route_id = $1 and address_id = $2 and status <> 'cancelled' limit 1", [to, d.address_id]) : [];
       await q("update deliveries set daily_route_id = $2, stop_order = coalesce($3::int, (select coalesce(max(stop_order), 0) + 1 from deliveries where daily_route_id = $2)) where id = $1", [deliveryId, to, same?.stop_order ?? null]);
@@ -254,12 +259,13 @@ export async function setDailyDriver(q: Q, dailyRouteId: string, driverId: numbe
 
 // ---------- reading
 
-export type DayRoute = { id: string; routeId: number; name: string; driver: string | null; driverPhone: string | null; vehicle: string | null; stops: number; deliveries: number; units: number; mode: string };
+export type DayRoute = { id: string; routeId: number; name: string; driver: string | null; driverPhone: string | null; vehicle: string | null; stops: number; deliveries: number; units: number; mode: string; loaded: number; delivered: number };
 
 export async function dayRoutes(q: Q, date: string): Promise<DayRoute[]> {
-  const rows = await q<{ id: string; route_id: number; name: string; driver: string | null; phone: string | null; vehicle: string | null; stops: number; deliveries: number; units: number; mode: string }>(
+  const rows = await q<{ id: string; route_id: number; name: string; driver: string | null; phone: string | null; vehicle: string | null; stops: number; deliveries: number; units: number; mode: string; loaded: number; delivered: number }>(
     `select dr.id::text, dr.route_id, r.name, dv.name as driver, dv.phone, v.registration as vehicle, dr.mode,
             count(distinct d.stop_order)::int as stops, count(d.id)::int as deliveries,
+            count(d.loaded_at)::int as loaded, count(*) filter (where d.status = 'delivered')::int as delivered,
             coalesce(sum((select sum(l.quantity) from delivery_lines l where l.delivery_id = d.id)), 0)::float as units
      from daily_routes dr join routes r on r.id = dr.route_id
      left join drivers dv on dv.id = dr.driver_id left join vehicles v on v.id = dr.vehicle_id
@@ -269,7 +275,7 @@ export async function dayRoutes(q: Q, date: string): Promise<DayRoute[]> {
      order by r.name`,
     [date],
   );
-  return rows.map((r) => ({ id: r.id, routeId: r.route_id, name: r.name, driver: r.driver, driverPhone: r.phone, vehicle: r.vehicle, stops: r.stops, deliveries: r.deliveries, units: r.units, mode: r.mode }));
+  return rows.map((r) => ({ id: r.id, routeId: r.route_id, name: r.name, driver: r.driver, driverPhone: r.phone, vehicle: r.vehicle, stops: r.stops, deliveries: r.deliveries, units: r.units, mode: r.mode, loaded: r.loaded, delivered: r.delivered }));
 }
 
 export type PlanDelivery = { id: string; orderId: string; orderNumber: number; customer: string; address: string | null; addressId: string | null; window: string | null; units: number; status: string; stopOrder: number | null; notes: string | null };

@@ -23,6 +23,8 @@ async function HomeContent() {
   const { user, allowed } = await requirePermission("dashboard.view");
   // Production staff have no dashboard: they go straight to their plan.
   if (!allowed && can(user.role, "production.view")) redirect("/production");
+  // Drivers and loading staff go straight to their routes.
+  if (!allowed && can(user.role, "shipping.ship")) redirect("/drive");
   if (!allowed) return <NoAccess />;
 
   const [s] = await query<{
