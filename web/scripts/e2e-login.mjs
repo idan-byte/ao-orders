@@ -29,7 +29,7 @@ async function signIn(mobile) {
   const code = await page.locator("form b").textContent();
   await page.fill("#code", code.trim());
   await page.click("button[value=verify]");
-  await page.waitForURL(BASE + "/");
+  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
   return { context, page };
 }
 const navLabels = async (page) => {
@@ -59,7 +59,7 @@ try {
 
   // --- administrator
   const admin = await signIn(ADMIN);
-  check("admin navigation", await navLabels(admin.page), ["דשבורד", "מכירות", "הצעות מחיר", "הזמנות", "לקוחות", "קטלוג", "משתמשים"]);
+  check("admin navigation", await navLabels(admin.page), ["דשבורד", "מכירות", "הצעות מחיר", "הזמנות", "קבועות", "ייצור", "לקוחות", "קטלוג", "משתמשים"]);
   check("session cookie is not readable by scripts", await admin.page.evaluate(() => document.cookie.includes("ao_session")), false);
 
   await admin.page.goto(BASE + "/users");
@@ -87,14 +87,16 @@ try {
 
   // --- production worker: no dashboard, no catalog, no users
   const w = await signIn(worker.mobile);
-  check("production worker navigation is empty", await navLabels(w.page), []);
-  check("production worker: dashboard refused", await h1(w.page, "/"), "אין הרשאה למסך הזה");
+  check("production worker navigation has only production", await navLabels(w.page), ["ייצור"]);
+  await w.page.goto(BASE + "/");
+  await w.page.waitForURL(BASE + "/production");
+  check("production worker is sent from the dashboard to the production plan", new URL(w.page.url()).pathname, "/production");
   check("production worker: catalog refused", await h1(w.page, "/catalog"), "אין הרשאה למסך הזה");
   check("production worker: users refused", await h1(w.page, "/users"), "אין הרשאה למסך הזה");
 
   // --- department manager: catalog without prices, no users
   const m = await signIn(manager.mobile);
-  check("department manager navigation", await navLabels(m.page), ["דשבורד", "הזמנות", "קטלוג"]);
+  check("department manager navigation", await navLabels(m.page), ["דשבורד", "הזמנות", "קבועות", "ייצור", "קטלוג"]);
   check("department manager: catalog opens", await h1(m.page, "/catalog"), "קטלוג");
   await m.page.waitForSelector("main table");
   check("department manager: no price column", (await m.page.content()).includes("מחיר בסיס לפני"), false);
