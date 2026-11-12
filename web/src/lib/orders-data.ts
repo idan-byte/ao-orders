@@ -41,6 +41,7 @@ export async function addressesOf(customerId: string): Promise<{ id: string; tex
 export const SOURCE_LABEL: Record<string, string> = {
   manual: "הזנה ידנית",
   standing: "הזמנה קבועה",
+  milgam: "מילגם",
   quote: "הצעת מחיר",
   email: "מייל",
   whatsapp: "וואטסאפ",

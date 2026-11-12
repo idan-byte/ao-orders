@@ -70,12 +70,12 @@ async function Labels({ params, searchParams }: Pick<PageProps<"/shipping/day/[i
           מדבקה 102×150 מ״מ
         </Link>
       </div>
-      {deliveries.length > 0 ? (
+      {deliveries.some((l) => !l.className) ? (
         <section className="no-print rounded-xl border border-line bg-surface p-4" id="packages">
           <h2 className="font-display text-base font-bold">כמה ארגזים בכל אספקה</h2>
           <p className="mb-3 mt-1 text-sm text-muted">לכל ארגז מודפסת מדבקה עם קוד משלו. האספקה נחשבת שהועמסה רק כשכל הארגזים שלה נסרקו, כך שארגז שנשאר מאחור מתגלה לפני היציאה.</p>
           <ul className="flex flex-col gap-2">
-            {deliveries.map((l) => (
+            {deliveries.filter((l) => !l.className).map((l) => (
               <li key={l.deliveryId} data-packages={l.orderNumber} className="flex flex-wrap items-center justify-between gap-3">
                 <span>
                   עצירה {l.stop ?? "–"} · {l.customer} · הזמנה {l.orderNumber}
@@ -102,18 +102,25 @@ async function Labels({ params, searchParams }: Pick<PageProps<"/shipping/day/[i
                 {route.name} · {date}
               </div>
               <div className="label-stop">עצירה {l.stop ?? "–"}</div>
-              {l.boxes > 1 || l.kind !== "general" ? (
+              {l.className ? (
+                <div className="label-package" data-box-kind={l.kind}>
+                  {l.className} · ארגז {BOX_KINDS[l.kind]}
+                </div>
+              ) : l.boxes > 1 ? (
                 <div className="label-package">
-                  ארגז {BOX_KINDS[l.kind] ? `${BOX_KINDS[l.kind]} · ` : ""}
-                  {l.seq} מתוך {l.boxes}
+                  ארגז {l.seq} מתוך {l.boxes}
                 </div>
               ) : null}
-              <div className="label-customer">{l.customer}</div>
+              <div className="label-customer">{l.institution ?? l.customer}</div>
               {l.address ? <div className="label-line">{l.address}</div> : null}
+              {l.contents ? <div className="label-line label-note">{l.contents}</div> : null}
               <div className="label-line">
-                הזמנה {l.orderNumber} · {nf.format(l.units)} יח׳{l.window ? ` · ${l.window}` : ""}
+                הזמנה {l.orderNumber}
+                {l.contents ? "" : ` · ${nf.format(l.units)} יח׳`}
+                {l.window ? ` · ${l.window}` : ""}
               </div>
-              {l.notes ? <div className="label-line label-note">{l.notes}</div> : null}
+              {l.lifeThreatening ? <div className="label-line label-note">אלרגיות מסכנות חיים</div> : null}
+              {l.notes ? <div className="label-line label-note whitespace-pre-line">{l.notes}</div> : null}
               <div className="label-code" dir="ltr">
                 {formatScanCode(l.code)}
               </div>

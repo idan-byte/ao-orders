@@ -209,8 +209,9 @@ export function parseScanCode(input: string): string | null {
 
 export const BOX_KINDS = { general: "", hot: "חם", cold: "נלווים (קר)" } as const;
 export type BoxKind = keyof typeof BOX_KINDS;
-/** "ארגז 2 מתוך 3", with the kind when the delivery has a hot and a cold box. */
-export const boxName = (b: { seq: number; kind: BoxKind }, total: number) => `ארגז ${BOX_KINDS[b.kind] ? `${BOX_KINDS[b.kind]} · ` : ""}${b.seq} מתוך ${total}`;
+/** "ארגז 2 מתוך 3" for an ordinary delivery; "ארגז חם · א1" for a group's box of a hot food delivery. */
+export const boxName = (b: { seq: number; kind: BoxKind; className?: string | null }, total: number) =>
+  b.className ? `ארגז ${BOX_KINDS[b.kind] || "כללי"} · ${b.className}` : `ארגז ${BOX_KINDS[b.kind] ? `${BOX_KINDS[b.kind]} · ` : ""}${b.seq} מתוך ${total}`;
 
 export type ScanResult = { changed: boolean; message: string; customer: string; orderNumber: number; stop: number | null; complete: boolean; boxes: number; done: number };
 
@@ -224,9 +225,10 @@ export async function scanDelivery(q: Q, input: { code: string; dailyRouteId: st
   const code = parseScanCode(input.code);
   const unknown = () => new RefusedError("הקוד אינו מדבקת ארגז של המערכת.", { type: "unknown_code", deliveryId: null, dailyRouteId, metadata: { length: String(input.code ?? "").length } });
   if (!code) throw unknown();
-  const [box] = await q<{ id: string; delivery_id: string; seq: number; kind: BoxKind; customer: string; number: number; stop_order: number | null }>(
-    `select b.id::text, b.delivery_id::text, b.seq, b.kind, c.name as customer, o.number, d.stop_order
-     from delivery_boxes b join deliveries d on d.id = b.delivery_id join orders o on o.id = d.order_id join customers c on c.id = o.customer_id where b.scan_code = $1`,
+  const [box] = await q<{ id: string; delivery_id: string; seq: number; kind: BoxKind; className: string | null; customer: string; number: number; stop_order: number | null }>(
+    `select b.id::text, b.delivery_id::text, b.seq, b.kind, g.class_name as "className", coalesce(i.name, c.name) as customer, o.number, d.stop_order
+     from delivery_boxes b join deliveries d on d.id = b.delivery_id join orders o on o.id = d.order_id join customers c on c.id = o.customer_id
+     left join institution_groups g on g.id = b.group_id left join institutions i on i.id = g.institution_id where b.scan_code = $1`,
     [code],
   );
   if (!box) throw unknown();
@@ -266,7 +268,26 @@ export async function scanDelivery(q: Q, input: { code: string; dailyRouteId: st
   return result(true, total === 1 ? "נמסרה" : `${name} נמסר. כל הארגזים של האספקה נמסרו.`, total);
 }
 
-export type Label = { boxId: string; deliveryId: string; code: string; seq: number; kind: BoxKind; boxes: number; orderNumber: number; customer: string; address: string | null; stop: number | null; units: number; window: string | null; notes: string | null };
+export type Label = {
+  boxId: string;
+  deliveryId: string;
+  code: string;
+  seq: number;
+  kind: BoxKind;
+  boxes: number;
+  orderNumber: number;
+  customer: string;
+  address: string | null;
+  stop: number | null;
+  units: number;
+  window: string | null;
+  notes: string | null;
+  // Hot food only: the group the box belongs to, its institution, and what the group ordered ("20 חמגשית א-ב + 3 חמגשית צמחוני א-ב").
+  className: string | null;
+  institution: string | null;
+  contents: string | null;
+  lifeThreatening: boolean;
+};
 
 /** One label for every box on the route, in loading order: the last stop is loaded first. */
 export async function routeLabels(q: Q, dailyRouteId: string): Promise<Label[]> {
@@ -274,9 +295,13 @@ export async function routeLabels(q: Q, dailyRouteId: string): Promise<Label[]> 
     `select b.id::text as "boxId", d.id::text as "deliveryId", b.scan_code as code, b.seq, b.kind, (select count(*)::int from delivery_boxes x where x.delivery_id = d.id) as boxes,
             o.number as "orderNumber", c.name as customer, d.address_snapshot as address, d.stop_order as stop,
             coalesce((select sum(l.quantity) from delivery_lines l where l.delivery_id = d.id), 0)::float as units,
-            nullif(concat_ws('–', to_char(d.window_from, 'HH24:MI'), to_char(d.window_to, 'HH24:MI')), '') as window, d.shipping_notes as notes
+            nullif(concat_ws('–', to_char(d.window_from, 'HH24:MI'), to_char(d.window_to, 'HH24:MI')), '') as window, d.shipping_notes as notes,
+            g.class_name as "className", i.name as institution, coalesce(i.life_threatening, false) as "lifeThreatening",
+            (select string_agg(mq.ordered_qty || ' ' || mt.name, ' + ' order by mt.name) from milgam_quantities mq join meal_types mt on mt.id = mq.meal_type_id
+             where mq.group_id = b.group_id and mq.day = d.delivery_date and mq.ordered_qty is not null) as contents
      from deliveries d join delivery_boxes b on b.delivery_id = d.id join orders o on o.id = d.order_id join customers c on c.id = o.customer_id
-     where d.daily_route_id = $1 and d.status <> 'cancelled' order by d.stop_order desc, o.number, b.seq`,
+     left join institution_groups g on g.id = b.group_id left join institutions i on i.id = g.institution_id
+     where d.daily_route_id = $1 and d.status <> 'cancelled' order by d.stop_order desc, o.number, g.class_name nulls first, b.kind desc, b.seq`,
     [dailyRouteId],
   );
 }
@@ -292,6 +317,8 @@ export async function setBoxCount(q: Q, deliveryId: string, count: number, userI
   if (d.status === "cancelled") throw new ShippingError("האספקה בוטלה.");
   const boxes = await q<{ seq: number; loaded: boolean }>("select seq, loaded_at is not null as loaded from delivery_boxes where delivery_id = $1 order by seq for update", [deliveryId]);
   if (boxes.length === count) return;
+  const [grouped] = await q("select 1 from delivery_boxes where delivery_id = $1 and group_id is not null limit 1", [deliveryId]);
+  if (grouped) throw new ShippingError("באספקת אוכל חם יש ארגז חם וארגז קר לכל כיתה, ומספר הארגזים נקבע לפי ההזמנה של מילגם.");
   if (d.status === "shipped" || d.status === "delivered") throw new ShippingError("האספקה כבר יצאה. אי אפשר לשנות את מספר הארגזים שלה.");
   if (count > boxes.length) {
     const last = Math.max(0, ...boxes.map((b) => b.seq));

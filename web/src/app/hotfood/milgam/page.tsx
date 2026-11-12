@@ -4,11 +4,13 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { dayByMealType, milgamDays, recentImports, type FileProblem, type Held } from "@/lib/milgam-core";
+import { dayPlan } from "@/lib/hotfood-core";
+import { STATUS_LABEL } from "@/lib/orders-core";
 import { ActionForm } from "@/components/action-form";
 import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
-import { importMilgamAction } from "../actions";
+import { importMilgamAction, makeDeliveriesAction } from "../actions";
 
 const panel = "rounded-xl border border-line bg-surface p-4";
 const field = "rounded-lg border border-line bg-surface px-3 py-2 text-foreground";
@@ -41,6 +43,8 @@ async function Milgam({ searchParams }: Pick<PageProps<"/hotfood/milgam">, "sear
   const day = isDay(wanted) ? wanted : (days[0]?.day ?? null);
   const meals = day ? await dayByMealType(query, day) : [];
   const ordered = meals.some((m) => m.ordered !== null);
+  const plan = day && ordered ? await dayPlan(query, day) : null;
+  const ready = plan ? plan.institutions.filter((i) => i.blocked.length === 0 && !i.deliveryId).length : 0;
   const unmapped = meals.filter((m) => !m.sku).length;
   // What the latest load left out, so it is looked at and not forgotten.
   const [last] = imports.length > 0 ? await query<{ held: { rows: Held[]; problems: FileProblem[] } | null }>("select held from milgam_imports where id = $1", [imports[0].id]) : [];
@@ -183,6 +187,48 @@ async function Milgam({ searchParams }: Pick<PageProps<"/hotfood/milgam">, "sear
               </tr>
             </tbody>
           </table>
+        </section>
+      ) : null}
+
+      {plan && day ? (
+        <section className={panel} id="milgam-deliveries">
+          <h2 className="font-display text-lg font-bold">אספקות ליום {dayFmt.format(new Date(day))}</h2>
+          <p className="mb-3 mt-1 text-sm text-muted">
+            לכל מוסד נוצרת אספקה אחת, ולכל כיתה או גן שני ארגזים: חם ונלווים (קר), כל אחד עם מדבקה וקוד משלו. יצירה חוזרת אחרי הזמנה מתוקנת מעדכנת אספקות שעוד לא התחילו לזוז.
+          </p>
+          {manage ? (
+            <ActionForm action={makeDeliveriesAction} submit="צור ועדכן אספקות" pendingLabel="יוצר…">
+              <input type="hidden" name="day" value={day} />
+              <span className="pb-2 text-sm text-muted" id="deliveries-ready">
+                {plan.institutions.length} מוסדות בהזמנה · {plan.institutions.filter((i) => i.deliveryId).length} עם אספקה · {ready} מוכנים ליצירה · {plan.institutions.filter((i) => i.blocked.length > 0).length} עוד לא מוכנים
+              </span>
+            </ActionForm>
+          ) : null}
+          <ul className="mt-3 flex flex-col gap-2">
+            {plan.institutions.map((i) => (
+              <li key={i.institutionId} data-day-institution={i.symbol} data-state={i.deliveryId ? "made" : i.blocked.length > 0 ? "blocked" : "ready"} className="rounded-lg border border-line px-3 py-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <Link href={`/hotfood/institutions/${i.institutionId}`} className="font-medium underline">
+                    {i.name} <span className="font-normal text-muted">· {i.symbol}</span>
+                  </Link>
+                  <span className="text-sm tabular-nums">
+                    {nf.format(i.portions)} מנות · {i.groups.length} מסגרות · {i.groups.length * 2} ארגזים
+                  </span>
+                </div>
+                {i.deliveryId ? (
+                  <p className="text-sm" data-made>
+                    הזמנה {i.orderNumber} · {STATUS_LABEL[i.deliveryStatus ?? ""] ?? i.deliveryStatus} · {i.route ? `קו ${i.route}` : "עוד לא שובצה לקו"}
+                  </p>
+                ) : null}
+                {i.blocked.length > 0 ? (
+                  <p className="text-sm font-bold" data-blocked>
+                    {i.deliveryId ? "לא תתעדכן: " : "אי אפשר ליצור אספקה: "}
+                    {i.blocked.join(" · ")}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 

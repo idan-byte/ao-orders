@@ -89,7 +89,7 @@ body {
 .label-package { font-size: 13pt; font-weight: 700; }
 /* One label to a page for a 102x150 mm label printer: the QR on top, the text under it. */
 .label-single { grid-template-columns: 102mm; }
-.label-single .label { flex-direction: column; width: 102mm; height: 150mm; min-height: 0; padding: 5mm; border-radius: 0; text-align: center; justify-content: flex-start; overflow: hidden; }
+.label-single .label { flex-direction: column; width: 102mm; min-height: 150mm; padding: 5mm; border-radius: 0; text-align: center; justify-content: flex-start; overflow: hidden; }
 .label-single .label-qr { width: 62mm; height: 62mm; }
 .label-single .label-text { flex: none; width: 100%; }
 .label-single .label-stop { font-size: 30pt; }
