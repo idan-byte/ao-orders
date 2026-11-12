@@ -3,11 +3,11 @@ import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { WEEKDAYS } from "@/lib/standing-core";
+import { AUTO_MAX_DAYS, getAuto, WEEKDAYS } from "@/lib/standing-core";
 import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
-import { closedDayAction, generateAction, removeClosedDayAction } from "./actions";
+import { autoSettingsAction, closedDayAction, generateAction, removeClosedDayAction } from "./actions";
 
 type Row = { id: string; customer: string; valid_from: string; valid_to: string | null; paused_until: string | null; days: { weekday: number; units: number }[]; last_generated: string | null; ended: boolean; paused: boolean };
 
@@ -16,6 +16,7 @@ const field = "rounded-lg border border-line bg-surface px-3 py-2 text-foregroun
 const label = "flex flex-col gap-1 text-sm text-muted";
 const dateFmt = new Intl.DateTimeFormat("he-IL", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" });
 const d = (iso: string | null) => (iso ? dateFmt.format(new Date(iso)) : "");
+const stampFmt = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 export default function StandingPage() {
   return (
@@ -42,6 +43,7 @@ async function StandingList() {
     [dates.today],
   );
   const closed = await query<{ day: string; reason: string }>("select day::text, reason from closed_days where day >= $1::date order by day", [dates.today]);
+  const auto = await getAuto(query);
   const customers = mayEdit ? await query<{ id: string; name: string }>("select id::text, name from customers where active order by name") : [];
 
   return (
@@ -64,6 +66,34 @@ async function StandingList() {
           </ActionForm>
         </section>
       ) : null}
+
+      <section className={panel} data-auto={String(auto.settings.enabled)}>
+        <h2 className="mb-1 font-display text-base font-bold">יצירה אוטומטית</h2>
+        <p className="mb-3 text-sm text-muted">
+          כשהיא פעילה, המערכת יוצרת בעצמה כל רבע שעה את ההזמנות ממחר ועד מספר הימים שנבחר. שינוי בהזמנה קבועה חל רק על ימים שעוד לא נוצרה להם הזמנה, ולכן טווח קצר מגיב מהר יותר לשינויים, וטווח ארוך נותן לייצור ולשילוח תמונה רחוקה יותר.
+        </p>
+        {mayEdit ? (
+          <ActionForm action={autoSettingsAction} submit="שמור" primary={false}>
+            <label className="flex items-center gap-2 py-2">
+              <input id="auto-enabled" type="checkbox" name="enabled" defaultChecked={auto.settings.enabled} className="size-5" />
+              צור הזמנות אוטומטית
+            </label>
+            <label className={label}>
+              ימים קדימה
+              <input id="auto-days" name="days_ahead" type="number" min={1} max={AUTO_MAX_DAYS} required defaultValue={auto.settings.daysAhead} className={`${field} w-24`} />
+            </label>
+          </ActionForm>
+        ) : (
+          <p>{auto.settings.enabled ? `פעילה, ${auto.settings.daysAhead} ימים קדימה.` : "כבויה."}</p>
+        )}
+        <p id="auto-last" className="mt-2 text-sm text-muted">
+          {!auto.lastRun
+            ? "עוד לא רצה."
+            : auto.lastRun.error
+              ? `הריצה האחרונה (${stampFmt.format(new Date(auto.lastRun.at))}) נכשלה: ${auto.lastRun.error}`
+              : `ריצה אחרונה: ${stampFmt.format(new Date(auto.lastRun.at))} · נוצרו ${auto.lastRun.created} הזמנות · ${d(auto.lastRun.from)} עד ${d(auto.lastRun.to)}`}
+        </p>
+      </section>
 
       <section className={panel}>
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">

@@ -57,11 +57,16 @@ async function OrdersContent({ searchParams }: { searchParams: PageProps<"/order
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold">הזמנות</h1>
-        {can(user.role, "orders.edit") ? (
-          <Link id="new-order-link" href="/orders/new" className="rounded-lg bg-accent px-4 py-2 font-medium text-surface">
-            הזמנה חדשה
+        <div className="flex flex-wrap items-center gap-2">
+          <Link id="calendar-link" href={`/orders/calendar?month=${from.slice(0, 7)}`} className="rounded-lg border border-line px-4 py-2">
+            לוח שנה
           </Link>
-        ) : null}
+          {can(user.role, "orders.edit") ? (
+            <Link id="new-order-link" href="/orders/new" className="rounded-lg bg-accent px-4 py-2 font-medium text-surface">
+              הזמנה חדשה
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       <section className="rounded-xl border border-line bg-surface p-4">

@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { query, withTransaction } from "@/lib/db";
 import { assertPermission } from "@/lib/auth";
-import { generateStanding, saveStanding, setClosedDay, setPause, setSkip, StandingError, type StandingInput } from "@/lib/standing-core";
+import { generateStanding, runAuto, saveStanding, setAuto, setClosedDay, setPause, setSkip, StandingError, type StandingInput } from "@/lib/standing-core";
 
 export type StandingState = { error?: string; ok?: string };
 const message = (e: unknown) => (e instanceof StandingError ? e.message : "הפעולה נכשלה. שום דבר לא נשמר.");
@@ -115,4 +115,20 @@ export async function removeClosedDayAction(fd: FormData): Promise<void> {
     // Bad date: nothing to remove.
   }
   refresh();
+}
+
+export async function autoSettingsAction(_prev: StandingState, fd: FormData): Promise<StandingState> {
+  const user = await assertPermission("orders.edit");
+  const enabled = fd.get("enabled") === "on";
+  try {
+    // Switching it on runs it once straight away, so nobody waits for the next round to see what it does.
+    const result = await withTransaction(async (q) => {
+      await setAuto(q, { enabled, daysAhead: Number(s(fd, "days_ahead")) }, user.id);
+      return runAuto(q);
+    });
+    refresh();
+    return { ok: result ? `היצירה האוטומטית פעילה. נוצרו עכשיו ${result.created} הזמנות.` : "היצירה האוטומטית כבויה. הזמנות ייווצרו רק בלחיצה על ״צור הזמנות״." };
+  } catch (e) {
+    return { error: message(e) };
+  }
 }
