@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import QRCode from "qrcode";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
-import { expandLabels, formatScanCode, routeLabels, scanPayload } from "@/lib/loading-core";
+import { BOX_KINDS, formatScanCode, routeLabels, scanPayload } from "@/lib/loading-core";
 import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
@@ -43,8 +43,8 @@ async function Labels({ params, searchParams }: Pick<PageProps<"/shipping/day/[i
   }
   // Two ways to print: a sheet of A4 with two labels to a row, or one label to a page for a 102x150 mm label printer.
   const single = (await searchParams).format === "label";
-  const deliveries = await routeLabels(query, id);
-  const labels = expandLabels(deliveries);
+  const labels = await routeLabels(query, id);
+  const deliveries = labels.filter((l) => l.seq === Math.min(...labels.filter((x) => x.deliveryId === l.deliveryId).map((x) => x.seq)));
   // The QR is drawn on the server as plain SVG, so printing needs nothing from the network.
   const codes = await Promise.all(labels.map((l) => QRCode.toString(scanPayload(l.code), { type: "svg", errorCorrectionLevel: "M", margin: 2 })));
   const date = dayFmt.format(new Date(route.route_date));
@@ -72,8 +72,8 @@ async function Labels({ params, searchParams }: Pick<PageProps<"/shipping/day/[i
       </div>
       {deliveries.length > 0 ? (
         <section className="no-print rounded-xl border border-line bg-surface p-4" id="packages">
-          <h2 className="font-display text-base font-bold">כמה אריזות בכל אספקה</h2>
-          <p className="mb-3 mt-1 text-sm text-muted">לכל אריזה מודפסת מדבקה משלה. כל המדבקות של אספקה נושאות אותו קוד, וסריקה של אחת מהן מסמנת את כל האספקה.</p>
+          <h2 className="font-display text-base font-bold">כמה ארגזים בכל אספקה</h2>
+          <p className="mb-3 mt-1 text-sm text-muted">לכל ארגז מודפסת מדבקה עם קוד משלו. האספקה נחשבת שהועמסה רק כשכל הארגזים שלה נסרקו, כך שארגז שנשאר מאחור מתגלה לפני היציאה.</p>
           <ul className="flex flex-col gap-2">
             {deliveries.map((l) => (
               <li key={l.deliveryId} data-packages={l.orderNumber} className="flex flex-wrap items-center justify-between gap-3">
@@ -82,7 +82,7 @@ async function Labels({ params, searchParams }: Pick<PageProps<"/shipping/day/[i
                 </span>
                 <ActionForm action={packageCountAction} submit="שמור" primary={false} className="flex items-center gap-2">
                   <input type="hidden" name="delivery_id" value={l.deliveryId} />
-                  <input name="packages" type="number" min={1} max={99} required defaultValue={l.packages} aria-label="מספר אריזות" className="w-20 rounded-lg border border-line bg-surface px-3 py-2 text-foreground" />
+                  <input name="packages" type="number" min={1} max={99} required defaultValue={l.boxes} aria-label="מספר ארגזים" className="w-20 rounded-lg border border-line bg-surface px-3 py-2 text-foreground" />
                 </ActionForm>
               </li>
             ))}
@@ -90,21 +90,22 @@ async function Labels({ params, searchParams }: Pick<PageProps<"/shipping/day/[i
         </section>
       ) : null}
       <p className="no-print text-sm text-muted" id="labels-summary">
-        {labels.length} מדבקות ל-{deliveries.length} אספקות, בסדר הטעינה (העצירה האחרונה ראשונה). את ה-QR סורקים במסך ״טעינה והפצה״: בזמן הטעינה הוא מסמן שהאספקה הועמסה, ואחרי היציאה הוא מסמן שנמסרה.
+        {labels.length} מדבקות, אחת לכל ארגז, ל-{deliveries.length} אספקות, בסדר הטעינה (העצירה האחרונה ראשונה). את ה-QR סורקים במסך ״טעינה והפצה״: בזמן הטעינה הוא מסמן שהארגז הועמס, ואחרי היציאה הוא מסמן שנמסר.
       </p>
       {labels.length === 0 ? <p className="text-muted">אין אספקות בקו הזה.</p> : null}
       <ul className={single ? "label-sheet label-single" : "label-sheet"}>
         {labels.map((l, i) => (
-          <li key={`${l.deliveryId}-${l.index}`} className="label" data-label={l.orderNumber} data-code={l.code} data-package={l.index}>
+          <li key={l.boxId} className="label" data-label={l.orderNumber} data-code={l.code} data-box={l.seq}>
             <div className="label-qr" dangerouslySetInnerHTML={{ __html: codes[i] }} />
             <div className="label-text">
               <div className="label-route">
                 {route.name} · {date}
               </div>
               <div className="label-stop">עצירה {l.stop ?? "–"}</div>
-              {l.packages > 1 ? (
+              {l.boxes > 1 || l.kind !== "general" ? (
                 <div className="label-package">
-                  אריזה {l.index} מתוך {l.packages}
+                  ארגז {BOX_KINDS[l.kind] ? `${BOX_KINDS[l.kind]} · ` : ""}
+                  {l.seq} מתוך {l.boxes}
                 </div>
               ) : null}
               <div className="label-customer">{l.customer}</div>

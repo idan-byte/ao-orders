@@ -7,7 +7,7 @@ import path from "node:path";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { saveDriver, saveRoute, setAddressRoute, planDay, dayRoutes } from "../src/lib/shipping-core.ts";
-import { depart, parseScanCode, formatScanCode, scanPayload, scanDelivery, routeLabels, setPackageCount, expandLabels, RefusedError, recordRefusal } from "../src/lib/loading-core.ts";
+import { depart, parseScanCode, formatScanCode, scanPayload, scanDelivery, routeLabels, setBoxCount, boxName, missingFromRoute, processDeliveryAction, RefusedError, recordRefusal } from "../src/lib/loading-core.ts";
 import { createOrder } from "../src/lib/orders-core.ts";
 
 const db = new PGlite();
@@ -52,7 +52,7 @@ for (const name of ["גן הדר", "בית ספר נועם", "בית ספר רע
   addresses[name] = (await one("insert into customer_addresses (customer_id, street) values ($1, $2) returning id::text", [customers[name], "רחוב " + name])).id;
 }
 const draft = (address) => ({ lines: [{ sku: "50088", description: "x", quantity: 10, unitPrice: 5, variantId: null }], discountPct: 0, deliveryFee: 0, deliveryDate: DAY, windowFrom: null, windowTo: null, addressId: address, customerNotes: null, internalNotes: null, validUntil: null, paymentTerms: null });
-const order = async (name) => one("select id::text, scan_code from deliveries where order_id = $1", [(await createOrder(q, customers[name], manager.id, draft(addresses[name]))).orderId]);
+const order = async (name) => one("select id::text from deliveries where order_id = $1", [(await createOrder(q, customers[name], manager.id, draft(addresses[name]))).orderId]);
 const driver = await saveDriver(q, null, { name: "משה כהן", phone: "050-1234567", vehicleRegistration: "12-345-67", vehicleDescription: null }, manager.id);
 const r1 = await saveRoute(q, null, { name: "ירושלים 1", description: null, defaultDriverId: driver }, manager.id);
 const r2 = await saveRoute(q, null, { name: "ירושלים 2", description: null, defaultDriverId: null }, manager.id);
@@ -67,50 +67,99 @@ const all = { load: true, unload: true };
 const scan = (code, access = all) => scanDelivery(q, { code, dailyRouteId: A, userId: manager.id, access });
 const state = async (name) => { const r = await one("select status::text, loaded_at is not null as loaded from deliveries where id = $1", [d[name].id]); return [r.status, r.loaded]; };
 const events = async (type, source = "qr_scan") => (await one("select count(*)::int as n from shipping_events where event_type = $1 and source = $2", [type, source])).n;
+const codes = async (name) => (await q("select scan_code from delivery_boxes where delivery_id = $1 order by seq", [d[name].id])).map((r) => r.scan_code);
+const boxes = async (name) => (await q("select loaded_at is not null as l, unloaded_at is not null as u from delivery_boxes where delivery_id = $1 order by seq", [d[name].id])).map((r) => (r.u ? "delivered" : r.l ? "loaded" : "-"));
+const act = (name, action) => processDeliveryAction(q, { deliveryId: d[name].id, dailyRouteId: A, action, userId: manager.id, source: "manual" });
 
-check("every delivery gets its own code of ten characters", [Object.values(d).every((x) => /^[0-9A-F]{10}$/.test(x.scan_code)), new Set(Object.values(d).map((x) => x.scan_code)).size], [true, 3]);
-await refuses("two deliveries cannot share a code", () => q("update deliveries set scan_code = $1 where id = $2", [d["גן הדר"].scan_code, d["בית ספר נועם"].id]), "unique");
+// ---------- every delivery has a box, every box its own code
+check("a new delivery gets one box by itself, with a code of ten characters", [(await codes("גן הדר")).length, /^[0-9A-F]{10}$/.test((await codes("גן הדר"))[0])], [1, true]);
+await setBoxCount(q, d["גן הדר"].id, 3, manager.id);
+const hadar = await codes("גן הדר");
+const noam = await codes("בית ספר נועם");
+const reut = await codes("בית ספר רעות");
+check("three boxes have three different codes, and no two boxes anywhere share one", [hadar.length, new Set([...hadar, ...noam, ...reut]).size], [3, 5]);
+await refuses("the database itself refuses two boxes with one code", () => q("update delivery_boxes set scan_code = $1 where delivery_id = $2", [hadar[0], d["בית ספר נועם"].id]), "unique");
+check("the change of the number of boxes is kept in the history", await one("select before, after from audit_log where action = 'box_count' and entity_id = $1", [d["גן הדר"].id]), { before: { boxes: 1 }, after: { boxes: 3 } });
+await setBoxCount(q, d["גן הדר"].id, 3, manager.id);
+check("saving the same number again writes nothing", (await one("select count(*)::int as n from audit_log where action = 'box_count'")).n, 1);
+await refuses("zero boxes is refused", () => setBoxCount(q, d["גן הדר"].id, 0, manager.id), "בין 1 ל-99");
+await refuses("a hundred boxes is refused", () => setBoxCount(q, d["גן הדר"].id, 100, manager.id), "בין 1 ל-99");
+await refuses("half a box is refused", () => setBoxCount(q, d["גן הדר"].id, 1.5, manager.id), "בין 1 ל-99");
 
 // ---------- labels
 const labels = await routeLabels(q, A);
-check("a route's labels: one per delivery, last stop first, with what the loader needs to see", labels.map((l) => [l.stop, l.customer, l.units, l.code === d[l.customer].scan_code, l.address]), [[2, "בית ספר נועם", 10, true, "רחוב בית ספר נועם"], [1, "גן הדר", 10, true, "רחוב גן הדר"]]);
+check("a route's labels: one per box, last stop first, numbered within the delivery, each with its own code", labels.map((l) => [l.stop, l.customer, l.seq, l.boxes, l.kind, l.units]), [[2, "בית ספר נועם", 1, 1, "general", 10], [1, "גן הדר", 1, 3, "general", 10], [1, "גן הדר", 2, 3, "general", 10], [1, "גן הדר", 3, 3, "general", 10]]);
+check("the codes on the labels are the boxes' codes", [labels.slice(1).map((l) => l.code), labels[0].address], [hadar, "רחוב בית ספר נועם"]);
+check("how a box is named", [boxName({ seq: 2, kind: "general" }, 3), boxName({ seq: 1, kind: "hot" }, 2), boxName({ seq: 2, kind: "cold" }, 2)], ["ארגז 2 מתוך 3", "ארגז חם · 1 מתוך 2", "ארגז נלווים (קר) · 2 מתוך 2"]);
 
-// ---------- packages
-check("a delivery starts with one package", labels.map((l) => l.packages), [1, 1]);
-await setPackageCount(q, d["גן הדר"].id, 3, manager.id);
-const printed = expandLabels(await routeLabels(q, A));
-check("every package gets its own label, numbered, with the delivery's one code", printed.map((l) => [l.customer, l.index, l.packages, l.code === d[l.customer].scan_code]), [["בית ספר נועם", 1, 1, true], ["גן הדר", 1, 3, true], ["גן הדר", 2, 3, true], ["גן הדר", 3, 3, true]]);
-check("the change is kept in the history", await one("select before, after from audit_log where action = 'package_count' and entity_id = $1", [d["גן הדר"].id]), { before: { packages: 1 }, after: { packages: 3 } });
-await setPackageCount(q, d["גן הדר"].id, 3, manager.id);
-check("saving the same number again writes nothing", (await one("select count(*)::int as n from audit_log where action = 'package_count'")).n, 1);
-await refuses("zero packages is refused", () => setPackageCount(q, d["גן הדר"].id, 0, manager.id), "בין 1 ל-99");
-await refuses("a hundred packages is refused", () => setPackageCount(q, d["גן הדר"].id, 100, manager.id), "בין 1 ל-99");
-await refuses("half a package is refused", () => setPackageCount(q, d["גן הדר"].id, 1.5, manager.id), "בין 1 ל-99");
+// ---------- scanning while loading: box by box
+const first = await scan(scanPayload(hadar[0]));
+check("the first of three boxes is taken, and the delivery is not loaded yet", [first.changed, first.complete, first.done, first.boxes, first.message, first.customer, first.stop, await state("גן הדר"), await boxes("גן הדר")], [true, false, 1, 3, "ארגז 1 מתוך 3 הועמס. חסרים עוד 2.", "גן הדר", 1, ["approved", false], ["loaded", "-", "-"]]);
+check("the history has the box, not the delivery", [await events("box_loaded"), await events("loaded")], [1, 0]);
+const again = await scan(formatScanCode(hadar[0]).toLowerCase());
+check("the same box scanned again changes nothing and says what is still missing", [again.changed, again.message, await events("box_loaded")], [false, "ארגז 1 מתוך 3 כבר נסרק. חסרים עוד 2.", 1]);
+check("a delivery with a box missing is missing from the route, with its count", (await missingFromRoute(q, A)).map((m) => [m.customer, m.loadedBoxes, m.boxes]), [["גן הדר", 1, 3], ["בית ספר נועם", 0, 1]]);
+await scan(noam[0]);
+check("a delivery of one box is loaded by its one scan", [await state("בית ספר נועם"), await events("loaded")], [["approved", true], 1]);
+await refuses("the route cannot leave while one box of a delivery is not on the vehicle", () => depart(q, A, manager.id), "חסרות 1 אספקות");
+await scan(hadar[2]);
+const last = await scan(hadar[1]);
+check("the last box completes the delivery, whatever the order of scanning", [last.complete, last.message, await state("גן הדר"), await boxes("גן הדר"), await events("loaded")], [true, "ארגז 2 מתוך 3 הועמס. כל הארגזים של האספקה על הרכב.", ["approved", true], ["loaded", "loaded", "loaded"], 2]);
+check("nothing is missing now", await missingFromRoute(q, A), []);
 
-// ---------- scanning while loading
-const first = await scan(scanPayload(d["גן הדר"].scan_code));
-check("a scan while loading marks the delivery as loaded and says whose it is", [first.changed, first.message, first.customer, first.stop, first.orderNumber > 0, await state("גן הדר")], [true, "הועמסה", "גן הדר", 1, true, ["approved", true]]);
-check("the history says it was a scan", [await events("loaded"), await events("loaded", "manual")], [1, 0]);
-check("the same label scanned again changes nothing", [(await scan(formatScanCode(d["גן הדר"].scan_code).toLowerCase())).changed, await events("loaded")], [false, 1]);
-const wrong = await refuses("a label of another route is refused, naming its route", () => scan(d["בית ספר רעות"].scan_code), "שייכת לקו ירושלים 2");
+// ---------- refused scans
+const wrong = await refuses("a box of another route is refused, naming its route", () => scan(reut[0]), "שייכת לקו ירושלים 2");
 await recordRefusal(q, wrong, manager.id, "qr_scan");
-check("and the attempt is kept in the history as a scan", [wrong instanceof RefusedError, await events("wrong_route_attempt"), await state("בית ספר רעות")], [true, 1, ["approved", false]]);
-const unknown = await refuses("a QR that is not one of our labels is refused", () => scan("https://example.com/menu"), "אינו מדבקת אספקה");
-const unknown2 = await refuses("a well-formed code that no delivery has is refused the same way", () => scan("0000000000"), "אינו מדבקת אספקה");
+check("and the attempt is kept in the history as a scan; the box stays unmarked", [wrong instanceof RefusedError, await events("wrong_route_attempt"), await boxes("בית ספר רעות")], [true, 1, ["-"]]);
+const unknown = await refuses("a QR that is not one of our labels is refused", () => scan("https://example.com/menu"), "אינו מדבקת ארגז");
+const unknown2 = await refuses("a well-formed code that no box has is refused the same way", () => scan("0000000000"), "אינו מדבקת ארגז");
 await recordRefusal(q, unknown, manager.id, "qr_scan");
 check("an unknown scan is recorded without its content", [unknown.refusal.type, unknown2.refusal.type, await one("select delivery_id, metadata from shipping_events where event_type = 'unknown_code'")], ["unknown_code", "unknown_code", { delivery_id: null, metadata: { length: 24 } }]);
-await refuses("someone who may not load cannot load by scanning", () => scan(d["בית ספר נועם"].scan_code, { load: false, unload: true }), "אין לך הרשאה להעמיס");
-check("nothing was loaded by the refused scan", await state("בית ספר נועם"), ["approved", false]);
 
-// ---------- scanning after the route left
-await scan(d["בית ספר נועם"].scan_code);
+// ---------- undoing, tapping, and changing the number of boxes
+await act("גן הדר", "reverse_load");
+check("undoing the loading of a delivery clears all its boxes", [await state("גן הדר"), await boxes("גן הדר")], [["approved", false], ["-", "-", "-"]]);
+await scan(hadar[0]);
+await act("גן הדר", "reverse_load");
+check("a partly scanned delivery can be cleared too", await boxes("גן הדר"), ["-", "-", "-"]);
+await refuses("someone who may not load cannot load by scanning", () => scan(hadar[0], { load: false, unload: true }), "אין לך הרשאה להעמיס");
+check("nothing was loaded by the refused scan", await boxes("גן הדר"), ["-", "-", "-"]);
+await act("גן הדר", "load");
+check("a tap on the delivery marks all its boxes", [await state("גן הדר"), await boxes("גן הדר")], [["approved", true], ["loaded", "loaded", "loaded"]]);
+await refuses("a box that is on the vehicle cannot be made to disappear", () => setBoxCount(q, d["גן הדר"].id, 2, manager.id), "כבר הועמס");
+await setBoxCount(q, d["גן הדר"].id, 4, manager.id);
+check("a box added to a loaded delivery makes it incomplete again", [await state("גן הדר"), await boxes("גן הדר")], [["approved", false], ["loaded", "loaded", "loaded", "-"]]);
+await setBoxCount(q, d["גן הדר"].id, 3, manager.id);
+check("taking the unloaded box off again makes the delivery complete, with the same codes as before", [await state("גן הדר"), await codes("גן הדר")], [["approved", true], hadar]);
+
+// ---------- after the route left: handing over box by box
 await depart(q, A, manager.id);
-await refuses("someone who may not hand over cannot hand over by scanning", () => scan(d["גן הדר"].scan_code, { load: true, unload: false }), "אין לך הרשאה לסמן מסירה");
-const handed = await scan(d["גן הדר"].scan_code);
-check("after the route left, the same label marks the hand-over", [handed.changed, handed.message, await state("גן הדר"), await events("unloaded")], [true, "נמסרה", ["delivered", true], 1]);
-check("a second scan at the customer changes nothing", [(await scan(d["גן הדר"].scan_code)).changed, await events("unloaded")], [false, 1]);
-await scan(d["בית ספר נועם"].scan_code);
-check("the last scan completes the route", (await one("select delivery_completed_at is not null as t from daily_routes where id = $1", [A])).t, true);
+await refuses("the number of boxes cannot change after the delivery left", () => setBoxCount(q, d["גן הדר"].id, 5, manager.id), "כבר יצאה");
+await refuses("someone who may not hand over cannot hand over by scanning", () => scan(hadar[0], { load: true, unload: false }), "אין לך הרשאה לסמן מסירה");
+const handed = await scan(hadar[0]);
+check("the first box handed over does not deliver the delivery", [handed.complete, handed.message, await state("גן הדר"), await boxes("גן הדר"), await events("box_unloaded"), await events("unloaded")], [false, "ארגז 1 מתוך 3 נמסר. חסרים עוד 2.", ["shipped", true], ["delivered", "loaded", "loaded"], 1, 0]);
+check("the same box again changes nothing", [(await scan(hadar[0])).changed, await events("box_unloaded")], [false, 1]);
+await scan(hadar[1]);
+const done = await scan(hadar[2]);
+check("the last box delivers the delivery", [done.complete, done.message, await state("גן הדר"), await events("unloaded")], [true, "ארגז 3 מתוך 3 נמסר. כל הארגזים של האספקה נמסרו.", ["delivered", true], 1]);
+await act("גן הדר", "reverse_unload");
+check("undoing a hand-over puts all the boxes back on the vehicle", [await state("גן הדר"), await boxes("גן הדר")], [["shipped", true], ["loaded", "loaded", "loaded"]]);
+await act("גן הדר", "unload");
+const single = await scan(noam[0]);
+check("a delivery of one box keeps its short answer, and the last scan completes the route", [single.message, single.complete, (await one("select delivery_completed_at is not null as t from daily_routes where id = $1", [A])).t], ["נמסרה", true, true]);
+
+// ---------- a delivery left behind takes its boxes off the vehicle
+const B = (await dayRoutes(q, DAY)).find((r) => r.name === "ירושלים 2").id;
+const extra = await order("בית ספר רעות");
+await planDay(q, DAY, manager.id);
+await q("update daily_routes set driver_id = $2 where id = $1", [B, driver]);
+await setBoxCount(q, extra.id, 2, manager.id);
+const extraCodes = (await q("select scan_code from delivery_boxes where delivery_id = $1 order by seq", [extra.id])).map((r) => r.scan_code);
+const scanB = (code) => scanDelivery(q, { code, dailyRouteId: B, userId: manager.id, access: all });
+await scanB(reut[0]);
+await scanB(extraCodes[0]);
+check("leaving with one box of two missing needs the manager's reason, and the delivery stays behind as a whole", [await depart(q, B, manager.id, { allowMissing: true, reason: "ארגז אחד לא נמצא" }), (await q("select loaded_at is not null as l from delivery_boxes where delivery_id = $1 order by seq", [extra.id])).map((r) => r.l), (await one("select daily_route_id from deliveries where id = $1", [extra.id])).daily_route_id], [{ shipped: 1, leftBehind: 1 }, [false, false], null]);
+check("the history of the delivery left behind says how many of its boxes had been loaded", await one("select metadata->'boxes' as boxes, metadata->'loadedBoxes' as loaded from shipping_events where event_type = 'left_behind' and delivery_id = $1", [extra.id]), { boxes: 2, loaded: 1 });
 
 console.log(failed ? `SCAN CHECK FAILED (${failed})` : "SCAN CHECK PASSED");
 process.exit(failed ? 1 : 0);

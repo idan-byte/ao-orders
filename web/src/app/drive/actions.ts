@@ -69,7 +69,8 @@ export async function closeRouteAction(_prev: State, fd: FormData): Promise<Stat
   }
 }
 
-export type ScanState = { kind: "done" | "already" | "refused"; message: string; detail?: string };
+// "partial": the box was taken, and other boxes of the same delivery are still missing.
+export type ScanState = { kind: "done" | "partial" | "already" | "refused"; message: string; detail?: string };
 
 /** One scanned (or typed) label code on a route's screen. Called straight from the scan panel. */
 export async function scanAction(dailyRouteId: string, code: string): Promise<ScanState> {
@@ -79,7 +80,7 @@ export async function scanAction(dailyRouteId: string, code: string): Promise<Sc
   try {
     const r = await withTransaction((q) => scanDelivery(q, { code: String(code).slice(0, 200), dailyRouteId, userId: user.id, access }));
     refresh();
-    return { kind: r.changed ? "done" : "already", message: r.message, detail: `${r.stop ? `עצירה ${r.stop} · ` : ""}${r.customer} · הזמנה ${r.orderNumber}` };
+    return { kind: !r.changed ? "already" : r.complete ? "done" : "partial", message: r.message, detail: `${r.stop ? `עצירה ${r.stop} · ` : ""}${r.customer} · הזמנה ${r.orderNumber}` };
   } catch (e) {
     if (e instanceof RefusedError) await withTransaction((q) => recordRefusal(q, e, user.id, "qr_scan")).catch(() => {});
     refresh();

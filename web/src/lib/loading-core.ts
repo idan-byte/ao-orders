@@ -26,8 +26,8 @@ export class RefusedError extends ShippingError {
 }
 export const recordRefusal = (q: Q, e: RefusedError, userId: string | null, source: Source) => event(q, e.refusal.type, e.refusal.deliveryId, e.refusal.dailyRouteId, userId, source, e.refusal.metadata);
 
-export async function processDeliveryAction(q: Q, input: { deliveryId: string; dailyRouteId: string; action: Action; userId: string | null; source: Source }): Promise<ActionResult> {
-  const { deliveryId, dailyRouteId, action, userId, source } = input;
+/** Locks the route and the delivery and checks that the delivery belongs to the route and was not cancelled. */
+async function guard(q: Q, deliveryId: string, dailyRouteId: string, action: Action) {
   const [route] = await q<{ mode: string; loading_started_at: string | null }>("select mode, loading_started_at::text from daily_routes where id = $1 for update", [dailyRouteId]);
   if (!route) throw new ShippingError("הקו לא נמצא.");
   const [d] = await q<{ status: string; daily_route_id: string | null; loaded: boolean; other_route: string | null; customer: string }>(
@@ -46,18 +46,31 @@ export async function processDeliveryAction(q: Q, input: { deliveryId: string; d
     });
   }
   if (d.status === "cancelled") throw new ShippingError("האספקה בוטלה.");
+  return { route, d };
+}
+
+/**
+ * Marks a whole delivery, with all its boxes: a tap on the screen, or the last box of a delivery being scanned.
+ * A single box is marked by `scanDelivery`.
+ */
+export async function processDeliveryAction(q: Q, input: { deliveryId: string; dailyRouteId: string; action: Action; userId: string | null; source: Source }): Promise<ActionResult> {
+  const { deliveryId, dailyRouteId, action, userId, source } = input;
+  const { route, d } = await guard(q, deliveryId, dailyRouteId, action);
 
   if (action === "load") {
     if (route.mode !== "loading") throw new ShippingError("הקו כבר יצא להפצה. אי אפשר להעמיס עליו.");
     if (d.loaded) return { changed: false, message: "האספקה כבר סומנה כהועמסה." };
     await q("update deliveries set loaded_at = now(), loaded_by = $2 where id = $1", [deliveryId, userId]);
+    await q("update delivery_boxes set loaded_at = now(), loaded_by = $2 where delivery_id = $1 and loaded_at is null", [deliveryId, userId]);
     if (!route.loading_started_at) await q("update daily_routes set loading_started_at = now() where id = $1", [dailyRouteId]);
     await event(q, "loaded", deliveryId, dailyRouteId, userId, source);
     return { changed: true, message: "הועמסה" };
   }
   if (action === "reverse_load") {
     if (route.mode !== "loading") throw new ShippingError("הקו כבר יצא להפצה. אי אפשר לבטל העמסה.");
-    if (!d.loaded) return { changed: false, message: "האספקה אינה מסומנת כהועמסה." };
+    // Also undoes boxes that were scanned while the delivery was still only partly loaded.
+    const cleared = await q("update delivery_boxes set loaded_at = null, loaded_by = null where delivery_id = $1 and loaded_at is not null returning id", [deliveryId]);
+    if (!d.loaded && cleared.length === 0) return { changed: false, message: "האספקה אינה מסומנת כהועמסה." };
     await q("update deliveries set loaded_at = null, loaded_by = null where id = $1", [deliveryId]);
     await event(q, "load_reversed", deliveryId, dailyRouteId, userId, source);
     return { changed: true, message: "סימון ההעמסה בוטל" };
@@ -69,6 +82,7 @@ export async function processDeliveryAction(q: Q, input: { deliveryId: string; d
       throw new RefusedError("האספקה לא הועמסה, ולכן אי אפשר לסמן שנמסרה.", { type: "unload_before_load", deliveryId, dailyRouteId, metadata: { status: d.status } });
     }
     await q("update deliveries set status = 'delivered', delivered_at = now() where id = $1", [deliveryId]);
+    await q("update delivery_boxes set unloaded_at = now(), unloaded_by = $2 where delivery_id = $1 and unloaded_at is null", [deliveryId, userId]);
     await statusAudit(q, userId, deliveryId, "shipped", "delivered", "נמסרה בקו החלוקה");
     await event(q, "unloaded", deliveryId, dailyRouteId, userId, source);
     const [left] = await q<{ n: number }>("select count(*)::int as n from deliveries where daily_route_id = $1 and status = 'shipped'", [dailyRouteId]);
@@ -76,23 +90,31 @@ export async function processDeliveryAction(q: Q, input: { deliveryId: string; d
     return { changed: true, message: "נמסרה" };
   }
   // reverse_unload
-  if (d.status !== "delivered") return { changed: false, message: "האספקה אינה מסומנת כנמסרה." };
+  if (d.status !== "delivered") {
+    // Boxes that were scanned at the customer while the delivery was still only partly handed over.
+    const cleared = await q("update delivery_boxes set unloaded_at = null, unloaded_by = null where delivery_id = $1 and unloaded_at is not null returning id", [deliveryId]);
+    return cleared.length > 0 ? { changed: true, message: "סימון המסירה בוטל" } : { changed: false, message: "האספקה אינה מסומנת כנמסרה." };
+  }
   await q("update deliveries set status = 'shipped', delivered_at = null where id = $1", [deliveryId]);
+  await q("update delivery_boxes set unloaded_at = null, unloaded_by = null where delivery_id = $1", [deliveryId]);
   await q("update daily_routes set delivery_completed_at = null where id = $1", [dailyRouteId]);
   await statusAudit(q, userId, deliveryId, "delivered", "shipped", "סימון המסירה בוטל");
   await event(q, "unload_reversed", deliveryId, dailyRouteId, userId, source);
   return { changed: true, message: "סימון המסירה בוטל" };
 }
 
-export type Missing = { deliveryId: string; orderNumber: number; customer: string; stop: number | null };
+export type Missing = { deliveryId: string; orderNumber: number; customer: string; stop: number | null; boxes: number; loadedBoxes: number };
 
 export async function missingFromRoute(q: Q, dailyRouteId: string): Promise<Missing[]> {
-  const rows = await q<{ id: string; number: number; customer: string; stop_order: number | null }>(
-    `select d.id::text, o.number, c.name as customer, d.stop_order from deliveries d join orders o on o.id = d.order_id join customers c on c.id = o.customer_id
+  const rows = await q<{ id: string; number: number; customer: string; stop_order: number | null; boxes: number; loaded_boxes: number }>(
+    `select d.id::text, o.number, c.name as customer, d.stop_order,
+            (select count(*)::int from delivery_boxes b where b.delivery_id = d.id) as boxes,
+            (select count(*)::int from delivery_boxes b where b.delivery_id = d.id and b.loaded_at is not null) as loaded_boxes
+     from deliveries d join orders o on o.id = d.order_id join customers c on c.id = o.customer_id
      where d.daily_route_id = $1 and d.status <> 'cancelled' and d.loaded_at is null order by d.stop_order, o.number`,
     [dailyRouteId],
   );
-  return rows.map((r) => ({ deliveryId: r.id, orderNumber: r.number, customer: r.customer, stop: r.stop_order }));
+  return rows.map((r) => ({ deliveryId: r.id, orderNumber: r.number, customer: r.customer, stop: r.stop_order, boxes: r.boxes, loadedBoxes: r.loaded_boxes }));
 }
 
 /**
@@ -121,7 +143,9 @@ export async function depart(q: Q, dailyRouteId: string, userId: string, excepti
   for (const s of shipped) await statusAudit(q, userId, s.id, s.status, "shipped", "יצאה בקו החלוקה");
   for (const m of missing) {
     await q("update deliveries set daily_route_id = null, stop_order = null where id = $1", [m.deliveryId]);
-    await event(q, "left_behind", m.deliveryId, dailyRouteId, userId, "manual", { reason });
+    // Boxes of a delivery that stays behind come off the vehicle with it.
+    await q("update delivery_boxes set loaded_at = null, loaded_by = null where delivery_id = $1", [m.deliveryId]);
+    await event(q, "left_behind", m.deliveryId, dailyRouteId, userId, "manual", { reason, boxes: m.boxes, loadedBoxes: m.loadedBoxes });
   }
   await q(
     "update daily_routes set mode = 'unloading', loading_completed_at = now(), delivery_started_at = now(), departed_by = $2, departure_note = $3 where id = $1",
@@ -183,55 +207,102 @@ export function parseScanCode(input: string): string | null {
   return /^[0-9A-F]{10}$/.test(t) ? t : null;
 }
 
-export type ScanResult = { changed: boolean; message: string; customer: string; orderNumber: number; stop: number | null };
+export const BOX_KINDS = { general: "", hot: "חם", cold: "נלווים (קר)" } as const;
+export type BoxKind = keyof typeof BOX_KINDS;
+/** "ארגז 2 מתוך 3", with the kind when the delivery has a hot and a cold box. */
+export const boxName = (b: { seq: number; kind: BoxKind }, total: number) => `ארגז ${BOX_KINDS[b.kind] ? `${BOX_KINDS[b.kind]} · ` : ""}${b.seq} מתוך ${total}`;
+
+export type ScanResult = { changed: boolean; message: string; customer: string; orderNumber: number; stop: number | null; complete: boolean; boxes: number; done: number };
 
 /**
- * One scan on a route's screen. The route's mode decides what the scan means: loading while the route is
- * being loaded, handing over once it has left. The rules themselves are those of `processDeliveryAction`.
+ * One scan on a route's screen marks one box. The route's mode decides what the scan means: loading while
+ * the route is being loaded, handing over once it has left. The delivery itself is marked only when its
+ * last box is scanned, so a box that was left behind keeps the delivery, and the route, incomplete.
  */
 export async function scanDelivery(q: Q, input: { code: string; dailyRouteId: string; userId: string | null; access: Pick<RouteAccess, "load" | "unload"> }): Promise<ScanResult> {
+  const { dailyRouteId, userId } = input;
   const code = parseScanCode(input.code);
-  const unknown = () => new RefusedError("הקוד אינו מדבקת אספקה של המערכת.", { type: "unknown_code", deliveryId: null, dailyRouteId: input.dailyRouteId, metadata: { length: String(input.code ?? "").length } });
+  const unknown = () => new RefusedError("הקוד אינו מדבקת ארגז של המערכת.", { type: "unknown_code", deliveryId: null, dailyRouteId, metadata: { length: String(input.code ?? "").length } });
   if (!code) throw unknown();
-  const [d] = await q<{ id: string; customer: string; number: number; stop_order: number | null }>(
-    "select d.id::text, c.name as customer, o.number, d.stop_order from deliveries d join orders o on o.id = d.order_id join customers c on c.id = o.customer_id where d.scan_code = $1",
+  const [box] = await q<{ id: string; delivery_id: string; seq: number; kind: BoxKind; customer: string; number: number; stop_order: number | null }>(
+    `select b.id::text, b.delivery_id::text, b.seq, b.kind, c.name as customer, o.number, d.stop_order
+     from delivery_boxes b join deliveries d on d.id = b.delivery_id join orders o on o.id = d.order_id join customers c on c.id = o.customer_id where b.scan_code = $1`,
     [code],
   );
-  if (!d) throw unknown();
-  const [route] = await q<{ mode: string }>("select mode from daily_routes where id = $1", [input.dailyRouteId]);
-  if (!route) throw new ShippingError("הקו לא נמצא.");
-  const action: Action = route.mode === "loading" ? "load" : "unload";
+  if (!box) throw unknown();
+  const [mode] = await q<{ mode: string }>("select mode from daily_routes where id = $1", [dailyRouteId]);
+  if (!mode) throw new ShippingError("הקו לא נמצא.");
+  const action: Action = mode.mode === "loading" ? "load" : "unload";
   if (!(action === "load" ? input.access.load : input.access.unload)) throw new ShippingError(action === "load" ? "אין לך הרשאה להעמיס בקו הזה." : "אין לך הרשאה לסמן מסירה בקו הזה.");
-  const result = await processDeliveryAction(q, { deliveryId: d.id, dailyRouteId: input.dailyRouteId, action, userId: input.userId, source: "qr_scan" });
-  return { ...result, customer: d.customer, orderNumber: d.number, stop: d.stop_order };
+  const { route, d } = await guard(q, box.delivery_id, dailyRouteId, action);
+  const boxes = await q<{ id: string; loaded: boolean; unloaded: boolean }>("select id::text, loaded_at is not null as loaded, unloaded_at is not null as unloaded from delivery_boxes where delivery_id = $1 order by seq for update", [box.delivery_id]);
+  const mine = boxes.find((b) => b.id === box.id)!;
+  const total = boxes.length;
+  const name = boxName(box, total);
+  const result = (changed: boolean, message: string, done: number): ScanResult => ({ changed, message, customer: box.customer, orderNumber: box.number, stop: box.stop_order, complete: done === total, boxes: total, done });
+  const still = (done: number) => (done < total ? ` חסרים עוד ${total - done}.` : "");
+
+  if (action === "load") {
+    if (route.mode !== "loading") throw new ShippingError("הקו כבר יצא להפצה. אי אפשר להעמיס עליו.");
+    const before = boxes.filter((b) => b.loaded).length;
+    if (mine.loaded) return result(false, total === 1 ? "האספקה כבר סומנה כהועמסה." : `${name} כבר נסרק.${still(before)}`, before);
+    await q("update delivery_boxes set loaded_at = now(), loaded_by = $2 where id = $1", [box.id, userId]);
+    if (!route.loading_started_at) await q("update daily_routes set loading_started_at = now() where id = $1", [dailyRouteId]);
+    await event(q, "box_loaded", box.delivery_id, dailyRouteId, userId, "qr_scan", { box: box.seq, of: total });
+    if (before + 1 < total) return result(true, `${name} הועמס.${still(before + 1)}`, before + 1);
+    await processDeliveryAction(q, { deliveryId: box.delivery_id, dailyRouteId, action: "load", userId, source: "qr_scan" });
+    return result(true, total === 1 ? "הועמסה" : `${name} הועמס. כל הארגזים של האספקה על הרכב.`, total);
+  }
+  if (route.mode !== "unloading") throw new ShippingError("הקו עדיין בטעינה. מסירה אפשרית רק אחרי היציאה להפצה.");
+  const before = boxes.filter((b) => b.unloaded).length;
+  if (mine.unloaded) return result(false, total === 1 ? "האספקה כבר סומנה כנמסרה." : `${name} כבר נמסר.${still(before)}`, before);
+  if (!mine.loaded || !d.loaded || d.status !== "shipped") {
+    throw new RefusedError(total === 1 ? "האספקה לא הועמסה, ולכן אי אפשר לסמן שנמסרה." : "הארגז לא הועמס, ולכן אי אפשר לסמן שנמסר.", { type: "unload_before_load", deliveryId: box.delivery_id, dailyRouteId, metadata: { status: d.status, box: box.seq } });
+  }
+  await q("update delivery_boxes set unloaded_at = now(), unloaded_by = $2 where id = $1", [box.id, userId]);
+  await event(q, "box_unloaded", box.delivery_id, dailyRouteId, userId, "qr_scan", { box: box.seq, of: total });
+  if (before + 1 < total) return result(true, `${name} נמסר.${still(before + 1)}`, before + 1);
+  await processDeliveryAction(q, { deliveryId: box.delivery_id, dailyRouteId, action: "unload", userId, source: "qr_scan" });
+  return result(true, total === 1 ? "נמסרה" : `${name} נמסר. כל הארגזים של האספקה נמסרו.`, total);
 }
 
-export type Label = { deliveryId: string; code: string; orderNumber: number; customer: string; address: string | null; stop: number | null; units: number; window: string | null; notes: string | null; packages: number };
+export type Label = { boxId: string; deliveryId: string; code: string; seq: number; kind: BoxKind; boxes: number; orderNumber: number; customer: string; address: string | null; stop: number | null; units: number; window: string | null; notes: string | null };
 
-/** One label for every delivery on the route, in loading order: the last stop is loaded first. */
+/** One label for every box on the route, in loading order: the last stop is loaded first. */
 export async function routeLabels(q: Q, dailyRouteId: string): Promise<Label[]> {
   return q<Label>(
-    `select d.id::text as "deliveryId", d.scan_code as code, o.number as "orderNumber", c.name as customer, d.address_snapshot as address, d.stop_order as stop,
+    `select b.id::text as "boxId", d.id::text as "deliveryId", b.scan_code as code, b.seq, b.kind, (select count(*)::int from delivery_boxes x where x.delivery_id = d.id) as boxes,
+            o.number as "orderNumber", c.name as customer, d.address_snapshot as address, d.stop_order as stop,
             coalesce((select sum(l.quantity) from delivery_lines l where l.delivery_id = d.id), 0)::float as units,
-            nullif(concat_ws('–', to_char(d.window_from, 'HH24:MI'), to_char(d.window_to, 'HH24:MI')), '') as window, d.shipping_notes as notes, d.package_count as packages
-     from deliveries d join orders o on o.id = d.order_id join customers c on c.id = o.customer_id
-     where d.daily_route_id = $1 and d.status <> 'cancelled' order by d.stop_order desc, o.number`,
+            nullif(concat_ws('–', to_char(d.window_from, 'HH24:MI'), to_char(d.window_to, 'HH24:MI')), '') as window, d.shipping_notes as notes
+     from deliveries d join delivery_boxes b on b.delivery_id = d.id join orders o on o.id = d.order_id join customers c on c.id = o.customer_id
+     where d.daily_route_id = $1 and d.status <> 'cancelled' order by d.stop_order desc, o.number, b.seq`,
     [dailyRouteId],
   );
 }
 
-/** Sets in how many packages a delivery goes out, which is how many labels are printed for it. */
-export async function setPackageCount(q: Q, deliveryId: string, count: number, userId: string): Promise<void> {
-  if (!Number.isInteger(count) || count < 1 || count > 99) throw new ShippingError("מספר האריזות צריך להיות בין 1 ל-99.");
-  const [d] = await q<{ package_count: number; status: string }>("select package_count, status::text from deliveries where id = $1 for update", [deliveryId]);
+/**
+ * Sets in how many boxes a delivery goes out. Each new box gets its own code. Boxes are taken off from the end,
+ * and only while they were not loaded: a box that is already on the vehicle is not made to disappear.
+ */
+export async function setBoxCount(q: Q, deliveryId: string, count: number, userId: string): Promise<void> {
+  if (!Number.isInteger(count) || count < 1 || count > 99) throw new ShippingError("מספר הארגזים צריך להיות בין 1 ל-99.");
+  const [d] = await q<{ status: string; loaded: boolean }>("select status::text, loaded_at is not null as loaded from deliveries where id = $1 for update", [deliveryId]);
   if (!d) throw new ShippingError("האספקה לא נמצאה.");
   if (d.status === "cancelled") throw new ShippingError("האספקה בוטלה.");
-  if (d.package_count === count) return;
-  await q("update deliveries set package_count = $2 where id = $1", [deliveryId, count]);
-  await q("insert into audit_log (user_id, action, entity_type, entity_id, before, after) values ($1, 'package_count', 'delivery', $2, $3, $4)", [userId, deliveryId, JSON.stringify({ packages: d.package_count }), JSON.stringify({ packages: count })]);
-}
-
-/** One printed label per package: "2 of 3" on each. */
-export function expandLabels(labels: Label[]): (Label & { index: number })[] {
-  return labels.flatMap((l) => Array.from({ length: l.packages }, (_, i) => ({ ...l, index: i + 1 })));
+  const boxes = await q<{ seq: number; loaded: boolean }>("select seq, loaded_at is not null as loaded from delivery_boxes where delivery_id = $1 order by seq for update", [deliveryId]);
+  if (boxes.length === count) return;
+  if (d.status === "shipped" || d.status === "delivered") throw new ShippingError("האספקה כבר יצאה. אי אפשר לשנות את מספר הארגזים שלה.");
+  if (count > boxes.length) {
+    const last = Math.max(0, ...boxes.map((b) => b.seq));
+    for (let seq = last + 1; seq <= last + count - boxes.length; seq++) await q("insert into delivery_boxes (delivery_id, seq) values ($1, $2)", [deliveryId, seq]);
+    // A delivery that was complete is not complete any more: the new box still has to be loaded.
+    if (d.loaded) await q("update deliveries set loaded_at = null, loaded_by = null where id = $1", [deliveryId]);
+  } else {
+    const drop = boxes.slice(count);
+    if (drop.some((b) => b.loaded)) throw new ShippingError("אי אפשר להוריד ארגז שכבר הועמס. קודם מבטלים את סימון ההעמסה.");
+    await q("delete from delivery_boxes where delivery_id = $1 and seq = any($2::int[])", [deliveryId, drop.map((b) => b.seq)]);
+    if (!d.loaded && boxes.slice(0, count).every((b) => b.loaded)) await q("update deliveries set loaded_at = now(), loaded_by = $2 where id = $1", [deliveryId, userId]);
+  }
+  await q("insert into audit_log (user_id, action, entity_type, entity_id, before, after) values ($1, 'box_count', 'delivery', $2, $3, $4)", [userId, deliveryId, JSON.stringify({ boxes: boxes.length }), JSON.stringify({ boxes: count })]);
 }
