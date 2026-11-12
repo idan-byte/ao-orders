@@ -3,12 +3,13 @@ import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { lockedPlans, planRows, planSources, SHIFTS } from "@/lib/production-core";
+import { lockedPlans, lockTimes, planRows, planSources, SHIFTS } from "@/lib/production-core";
+import { ActionForm } from "@/components/action-form";
 import { isIsoDate, resolveDepartment } from "@/lib/production-access";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { PrintButton } from "@/components/print-button";
-import { acknowledgeAction, lockAction, markAction, moveShiftAction, unlockAction } from "./actions";
+import { acknowledgeAction, lockAction, lockTimesAction, markAction, moveShiftAction, unlockAction } from "./actions";
 
 const qty = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 3 });
 const dayFmt = new Intl.DateTimeFormat("he-IL", { timeZone: "UTC", weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
@@ -38,6 +39,7 @@ async function Production({ searchParams }: { searchParams: PageProps<"/producti
   const locks = await lockedPlans(query, date, department.id);
   const mayMark = can(user.role, "production.mark");
   const mayLock = can(user.role, "production.lock");
+  const times = await lockTimes(query, department.id);
   const hidden = (shift?: number, sku?: string, variantId?: number | null) => (
     <>
       <input type="hidden" name="date" value={date} />
@@ -135,7 +137,7 @@ async function Production({ searchParams }: { searchParams: PageProps<"/producti
                 <>
                   <span data-locked className="rounded-full bg-sunken px-3 py-1">
                     נעולה מ-{stamp.format(new Date(lock.lockedAt))}
-                    {lock.lockedBy ? ` · ${lock.lockedBy}` : ""}
+                    {lock.lockedBy ? ` · ${lock.lockedBy}` : " · אוטומטית"}
                   </span>
                   {mayLock ? (
                     <form action={unlockAction}>
@@ -239,6 +241,49 @@ async function Production({ searchParams }: { searchParams: PageProps<"/producti
           </div>
         </section>
       ))}
+      <section className={`${panel} no-print`} data-lock-times>
+        <h2 className="mb-1 font-display text-base font-bold">נעילה אוטומטית · {department.name}</h2>
+        <p className="mb-3 text-sm text-muted">
+          בשעה שנקבעה התוכנית של המשמרת ננעלת מעצמה, וכל שינוי בהזמנות אחריה מוצג כ״שינוי אחרי נעילה״. משמרת בלי שעה ננעלת רק בלחיצה. מי שביטל נעילה אוטומטית של יום מסוים, נועל אותו שוב בעצמו.
+        </p>
+        {mayLock ? (
+          <ActionForm action={lockTimesAction} submit="שמור שעות נעילה" primary={false} className="flex flex-col items-start gap-3">
+            <input type="hidden" name="department_id" value={department.id} />
+            {SHIFTS.map((name, i) => {
+              const t = times.find((x) => x.shift === i);
+              return (
+                <div key={i} className="flex flex-wrap items-end gap-3">
+                  <span className="w-24 pb-2 font-medium">משמרת {name}</span>
+                  <label className="flex flex-col gap-1 text-sm text-muted">
+                    ננעלת
+                    <select id={`lock-offset-${i}`} name={`offset_${i}`} defaultValue={t ? String(t.dayOffset) : ""} className={field}>
+                      <option value="">רק בלחיצה</option>
+                      <option value="0">ביום האספקה</option>
+                      <option value="1">יום לפני האספקה</option>
+                      <option value="2">יומיים לפני האספקה</option>
+                      <option value="3">שלושה ימים לפני האספקה</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-muted">
+                    בשעה
+                    <input id={`lock-time-${i}`} name={`time_${i}`} type="time" defaultValue={t?.time ?? ""} className={field} />
+                  </label>
+                </div>
+              );
+            })}
+          </ActionForm>
+        ) : times.length === 0 ? (
+          <p>לא הוגדרו שעות נעילה.</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {times.map((t) => (
+              <li key={t.shift}>
+                משמרת {SHIFTS[t.shift]}: {t.dayOffset === 0 ? "ביום האספקה" : t.dayOffset === 1 ? "יום לפני האספקה" : `${t.dayOffset} ימים לפני האספקה`} בשעה <span dir="ltr">{t.time}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <p className="no-print text-sm text-muted">הכמויות מאוגדות מכל ההזמנות המאושרות לתאריך. סימון ״בוצע״ מעדכן גם את מצב ההזמנות: כשכל פריטי האספקה מוכנים היא עוברת ל״מוכנה לשילוח״.</p>
     </div>
   );
