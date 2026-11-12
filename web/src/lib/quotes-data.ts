@@ -25,6 +25,7 @@ export type QuoteDoc = {
   windowTo: string | null;
   address: string | null;
   customerNotes: string | null;
+  letterhead: { id: number; name: string; title: string; subtitle: string | null; footer: string | null; logoUrl: string | null };
   isLatest: boolean;
   expired: boolean;
   lines: { position: number; sku: string; description: string; quantity: number; unitPrice: number; discountPct: number; deliveryDate: string | null; lineTotal: number }[];
@@ -38,6 +39,7 @@ export async function loadQuoteDoc(versionId: string): Promise<QuoteDoc | null> 
     discount_pct: number; delivery_fee: number; vat_rate: number; before_vat: number; vat: number; total: number;
     delivery_date: string | null; window_from: string | null; window_to: string | null; address: string | null; customer_notes: string | null;
     is_latest: boolean; expired: boolean;
+    lh_id: number; lh_name: string; lh_title: string; lh_subtitle: string | null; lh_footer: string | null; lh_logo: string | null;
   }>(
     `select qt.id::text as quote_id, qt.number, qt.status::text, qt.valid_until::text, qt.payment_terms, c.name as customer, c.tax_id,
             v.version, v.sent_at::text, v.approved_at::text, v.approved_by_name, v.approval_method,
@@ -45,9 +47,12 @@ export async function loadQuoteDoc(versionId: string): Promise<QuoteDoc | null> 
             v.delivery_date::text, to_char(v.window_from, 'HH24:MI') as window_from, to_char(v.window_to, 'HH24:MI') as window_to,
             (select concat_ws(', ', a.street, a.city) from customer_addresses a where a.id = v.address_id) as address,
             v.customer_notes,
+            lh.id as lh_id, lh.name as lh_name, lh.title as lh_title, lh.subtitle as lh_subtitle, lh.footer as lh_footer,
+            case when lh.logo is not null then extract(epoch from lh.logo_updated_at)::bigint::text end as lh_logo,
             v.version = (select max(version) from quote_versions where quote_id = qt.id and sent_at is not null) as is_latest,
             coalesce(qt.valid_until < (now() at time zone 'Asia/Jerusalem')::date, false) as expired
      from quote_versions v join quotes qt on qt.id = v.quote_id join customers c on c.id = qt.customer_id
+     join letterheads lh on lh.id = coalesce(qt.letterhead_id, (select id from letterheads where is_default))
      where v.id = $1`,
     [versionId],
   );
@@ -63,6 +68,7 @@ export async function loadQuoteDoc(versionId: string): Promise<QuoteDoc | null> 
     versionId, version: h.version, sentAt: h.sent_at, approvedAt: h.approved_at, approvedByName: h.approved_by_name, approvalMethod: h.approval_method,
     discountPct: h.discount_pct, deliveryFee: h.delivery_fee, vatRate: h.vat_rate, beforeVat: h.before_vat, vat: h.vat, total: h.total,
     deliveryDate: h.delivery_date, windowFrom: h.window_from, windowTo: h.window_to, address: h.address, customerNotes: h.customer_notes,
+    letterhead: { id: h.lh_id, name: h.lh_name, title: h.lh_title, subtitle: h.lh_subtitle, footer: h.lh_footer, logoUrl: h.lh_logo ? `/letterheads/${h.lh_id}/logo?v=${h.lh_logo}` : null },
     isLatest: h.is_latest, expired: h.expired,
     lines: lines.map((l) => ({ position: l.position, sku: l.sku, description: l.description, quantity: l.quantity, unitPrice: l.unit_price, discountPct: l.discount_pct, deliveryDate: l.delivery_date, lineTotal: l.line_total })),
   };

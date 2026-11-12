@@ -43,6 +43,9 @@
 | `web/src/app/standing` | רשימת הזמנות קבועות, עורך שבועי, יצירת הזמנות לטווח תאריכים | כן, `e2e-standing.mjs` (20 בדיקות בדפדפן) |
 | `db/migrations/0008_settings.sql`, `web/src/lib/scheduler.ts`, `web/src/instrumentation.ts` | הגדרות מערכת, ומתזמן רקע שיוצר הזמנות מההזמנות הקבועות (ממחר ועד N ימים קדימה) | כן, `check-standing.mjs`, `e2e-calendar.mjs` |
 | `db/migrations/0009_auto_lock.sql`, `runAutoLock` ב-`production-core.ts` | נעילה אוטומטית של תוכנית הייצור לפי שעה, למחלקה ולמשמרת; ההגדרה במסך הייצור | כן, `check-production.mjs`, `e2e-autolock.mjs` (7 בדיקות בדפדפן) |
+| `db/migrations/0010_letterheads_emails.sql`, `web/src/lib/letterheads-core.ts`, `web/src/app/letterheads` | דפי לוגו: כמה כותרות מסמך (לוגו, שם עסק, שורת פרטים, שורת תחתית), ברירת מחדל, ובחירה לכל הצעה | כן, `check-letterheads.mjs` (33 בדיקות), `e2e-letterheads.mjs` (20 בדיקות בדפדפן) |
+| `web/src/lib/quote-pdf.ts`, `web/src/app/quotes/[id]/pdf` | הצעת מחיר כקובץ PDF, מודפסת בשרת בדפדפן Edge ללא ממשק | כן, `e2e-letterheads.mjs`, וגם נבדק בעין |
+| `web/src/lib/mail-core.ts`, `web/src/lib/mail.ts`, `web/src/app/quotes/email-action.ts` | שליחת הצעה במייל עם PDF מצורף, ורישום כל ניסיון שליחה | כן לניסוח ולרישום; שליחה אמיתית דרך SMTP לא נבדקה |
 | `web/src/app/orders/calendar` | לוח שנה חודשי של אספקות: כמות, יחידות, לקוחות מובילים, ימים סגורים | כן, `e2e-calendar.mjs` (15 בדיקות בדפדפן) |
 | `web/src/lib/catalog-core.ts` | ניהול מוצר (מחלקה, משמרת, ניתן להזמנה), סוגים תחת מק"ט, וחובת בחירת סוג בשורה | כן, `check-catalog.mjs` (32 בדיקות) |
 | `web/src/app/catalog/[sku]` | מסך מוצר: הגדרות ייצור, הוספת סוג, הפסקה והחזרה של סוג | כן, `e2e-variants.mjs` (18 בדיקות בדפדפן) |
@@ -119,6 +122,15 @@ npm run dev
 - המתזמן בודק כל 15 דקות, אחרי יצירת ההזמנות הקבועות, כך שהזמנות שנוצרו זה עתה נכנסות לתוכנית הנעולה.
 - תוכנית ננעלת אוטומטית פעם אחת בלבד. מי שביטל את הנעילה נועל שוב בעצמו.
 - גם תוכנית ריקה ננעלת, כדי שהזמנה שמגיעה אחרי שעת הנעילה תוצג כשינוי אחרי נעילה.
+
+### דפי לוגו, PDF ומייל
+
+- דף לוגו נבחר לכל הצעה; הצעה בלי בחירה משתמשת בברירת המחדל. דף אינו נמחק, רק יוצא משימוש.
+- תמונת הלוגו נשמרת במסד הנתונים (PNG, JPG או WebP עד 1MB; הסוג נקבע לפי תוכן הקובץ). כתובת הלוגו ציבורית, כי הלקוח רואה אותה בקישור האישור.
+- ה-PDF נוצר בדפדפן Edge המותקן בשרת (`playwright-core`, ערוץ `msedge`; `AO_PDF_BROWSER_CHANNEL` מחליף). הדפדפן פותח כתובת פנימית עם מפתח אקראי שקיים רק בזמן יצירת הקובץ.
+- מייל: הגדרות `SMTP_*` ו-`MAIL_FROM` ב-`.env.local`. בלי `SMTP_HOST` שום דבר לא נשלח: בפיתוח ההודעה וה-PDF נשמרים ב-`web/.data/outbox`, ובייצור זו שגיאה.
+- הקישור לאישור נכלל במייל רק כשמוגדר `AO_PUBLIC_BASE_URL`.
+- הרשאה חדשה `settings.manage` (מנהל מערכת ומנהל חברה) למסך דפי הלוגו.
 
 ### הזמנות קבועות
 
@@ -208,6 +220,14 @@ node scripts/e2e-calendar.mjs
 
 ```bash
 node scripts/e2e-autolock.mjs
+```
+
+```bash
+node scripts/check-letterheads.mjs
+```
+
+```bash
+node scripts/e2e-letterheads.mjs
 ```
 
 הבדיקה השנייה מריצה סנכרון אמיתי מחשבשבת, ומאשרת ומשנה מחירים של לקוח אחד במסד הפיתוח בלבד.

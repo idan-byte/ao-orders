@@ -14,9 +14,14 @@ export function QuoteDocument({ doc }: { doc: QuoteDoc }) {
   return (
     <article className="quote-doc rounded-xl border border-line bg-surface p-6">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4 border-b border-line pb-4">
-        <div>
-          <div className="font-display text-xl font-bold">אבי ועופר שירותי מזון בע״מ</div>
-          <div className="text-sm text-muted">A&amp;O Food Services · אזור התעשייה עטרות, ירושלים</div>
+        <div data-letterhead={doc.letterhead.name}>
+          {doc.letterhead.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- the logo is served from the database, not from static files
+            <img src={doc.letterhead.logoUrl} alt={doc.letterhead.title} className="mb-1 max-h-24 max-w-72 object-contain" />
+          ) : (
+            <div className="font-display text-xl font-bold">{doc.letterhead.title}</div>
+          )}
+          {doc.letterhead.subtitle ? <div className="text-sm text-muted">{doc.letterhead.subtitle}</div> : null}
         </div>
         <div className="text-end">
           <div className="font-display text-lg font-bold">
@@ -126,6 +131,7 @@ export function QuoteDocument({ doc }: { doc: QuoteDoc }) {
           <p className="whitespace-pre-wrap">{doc.customerNotes}</p>
         </div>
       ) : null}
+      {doc.letterhead.footer ? <footer className="mt-6 border-t border-line pt-3 text-center text-sm text-muted">{doc.letterhead.footer}</footer> : null}
     </article>
   );
 }

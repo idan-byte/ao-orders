@@ -47,7 +47,14 @@ async function QuotesContent({ searchParams }: { searchParams: PageProps<"/quote
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="font-display text-2xl font-bold">הצעות מחיר</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-bold">הצעות מחיר</h1>
+        {can(user.role, "settings.manage") ? (
+          <Link id="letterheads-link" href="/letterheads" className="rounded-lg border border-line px-3 py-1.5 text-sm">
+            דפי לוגו
+          </Link>
+        ) : null}
+      </div>
 
       {can(user.role, "quotes.edit") ? (
         <section className="rounded-xl border border-line bg-surface p-4">

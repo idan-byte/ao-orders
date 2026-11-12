@@ -44,7 +44,7 @@ body {
 
 /* Printing a quote: only the document, on white, without the app chrome. */
 @media print {
-  header, .no-print { display: none !important; }
+  body > header, .no-print { display: none !important; }
   body { background: #fff; color: #000; }
   main { max-width: none; padding: 0; }
   .quote-doc { border: 0; padding: 0; }
