@@ -5,7 +5,7 @@ import { query, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { closeRoute } from "@/lib/alerts-core";
-import { depart, processDeliveryAction, recordRefusal, RefusedError, routeAccess, type Action } from "@/lib/loading-core";
+import { depart, processDeliveryAction, recordRefusal, RefusedError, routeAccess, scanDelivery, type Action } from "@/lib/loading-core";
 import { ShippingError } from "@/lib/shipping-core";
 
 type State = { error?: string; ok?: string };
@@ -66,5 +66,23 @@ export async function closeRouteAction(_prev: State, fd: FormData): Promise<Stat
     return { ok: `הקו נסגר. ${n} אספקות סומנו כחריגה, וההזמנות שלהן מחכות להחלטה.` };
   } catch (e) {
     return { error: e instanceof ShippingError ? e.message : "הפעולה נכשלה. שום דבר לא נשמר." };
+  }
+}
+
+export type ScanState = { kind: "done" | "already" | "refused"; message: string; detail?: string };
+
+/** One scanned (or typed) label code on a route's screen. Called straight from the scan panel. */
+export async function scanAction(dailyRouteId: string, code: string): Promise<ScanState> {
+  const user = await getCurrentUser();
+  const access = user && isUuid(String(dailyRouteId)) ? await routeAccess(query, user, dailyRouteId, (p) => can(user.role, p)) : null;
+  if (!user || !access?.view) return { kind: "refused", message: "אין הרשאה לקו הזה." };
+  try {
+    const r = await withTransaction((q) => scanDelivery(q, { code: String(code).slice(0, 200), dailyRouteId, userId: user.id, access }));
+    refresh();
+    return { kind: r.changed ? "done" : "already", message: r.message, detail: `${r.stop ? `עצירה ${r.stop} · ` : ""}${r.customer} · הזמנה ${r.orderNumber}` };
+  } catch (e) {
+    if (e instanceof RefusedError) await withTransaction((q) => recordRefusal(q, e, user.id, "qr_scan")).catch(() => {});
+    refresh();
+    return { kind: "refused", message: e instanceof ShippingError ? e.message : "הפעולה נכשלה. שום דבר לא נשמר." };
   }
 }

@@ -8,7 +8,8 @@ import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { TapAction } from "@/components/tap-action";
-import { closeRouteAction, deliveryAction, departAction } from "../actions";
+import { ScanPanel } from "@/components/scan-panel";
+import { closeRouteAction, deliveryAction, departAction, scanAction } from "../actions";
 
 const panel = "rounded-xl border border-line bg-surface p-4";
 const nf = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 3 });
@@ -92,6 +93,8 @@ async function WorkRoute({ params, searchParams }: Pick<PageProps<"/drive/[id]">
         <progress value={done} max={Math.max(1, total)} className="mt-1 h-3 w-full" aria-label="התקדמות" />
         {route.departure_note ? <p className="mt-2 text-sm">הקו יצא בלי כל האספקות: {route.departure_note}</p> : null}
       </section>
+
+      {(loading ? access.load : access.unload) && total > 0 ? <ScanPanel dailyRouteId={id} mode={loading ? "loading" : "unloading"} scan={scanAction} /> : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <Link href={`/drive/${id}?order=loading`} aria-current={loadingOrder ? "page" : undefined} className={tab(loadingOrder)}>

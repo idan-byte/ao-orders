@@ -18,7 +18,7 @@ const statusAudit = (q: Q, userId: string | null, deliveryId: string, from: stri
  * the record is returned to the caller, which writes it after the rollback (see `refusal` on the error).
  */
 export class RefusedError extends ShippingError {
-  refusal: { type: string; deliveryId: string; dailyRouteId: string; metadata: unknown };
+  refusal: { type: string; deliveryId: string | null; dailyRouteId: string; metadata: unknown };
   constructor(message: string, refusal: RefusedError["refusal"]) {
     super(message);
     this.refusal = refusal;
@@ -167,3 +167,55 @@ export async function workRoutes(q: Q, user: { role: string; mobile: string }, d
 
 /** "not started" / "in progress" / "done". A route with nothing on it is never shown as done. */
 export const progressLabel = (done: number, total: number) => (total === 0 || done === 0 ? "טרם התחיל" : done < total ? "בתהליך" : "הושלם");
+
+// ---------- scanning a label
+
+export const SCAN_PREFIX = "AOD:";
+/** What the QR carries. The prefix tells our labels apart from any other QR a camera may catch. */
+export const scanPayload = (code: string) => SCAN_PREFIX + code;
+/** 3F9A1C07B2 -> 3F9A1-C07B2, easier to read aloud and to type. */
+export const formatScanCode = (code: string) => `${code.slice(0, 5)}-${code.slice(5)}`;
+/** Reads a scanned QR or a typed code: with or without the prefix, in any letter case, with spaces or hyphens. */
+export function parseScanCode(input: string): string | null {
+  let t = String(input ?? "").trim().toUpperCase();
+  if (t.startsWith(SCAN_PREFIX)) t = t.slice(SCAN_PREFIX.length);
+  t = t.replace(/[\s-]/g, "");
+  return /^[0-9A-F]{10}$/.test(t) ? t : null;
+}
+
+export type ScanResult = { changed: boolean; message: string; customer: string; orderNumber: number; stop: number | null };
+
+/**
+ * One scan on a route's screen. The route's mode decides what the scan means: loading while the route is
+ * being loaded, handing over once it has left. The rules themselves are those of `processDeliveryAction`.
+ */
+export async function scanDelivery(q: Q, input: { code: string; dailyRouteId: string; userId: string | null; access: Pick<RouteAccess, "load" | "unload"> }): Promise<ScanResult> {
+  const code = parseScanCode(input.code);
+  const unknown = () => new RefusedError("הקוד אינו מדבקת אספקה של המערכת.", { type: "unknown_code", deliveryId: null, dailyRouteId: input.dailyRouteId, metadata: { length: String(input.code ?? "").length } });
+  if (!code) throw unknown();
+  const [d] = await q<{ id: string; customer: string; number: number; stop_order: number | null }>(
+    "select d.id::text, c.name as customer, o.number, d.stop_order from deliveries d join orders o on o.id = d.order_id join customers c on c.id = o.customer_id where d.scan_code = $1",
+    [code],
+  );
+  if (!d) throw unknown();
+  const [route] = await q<{ mode: string }>("select mode from daily_routes where id = $1", [input.dailyRouteId]);
+  if (!route) throw new ShippingError("הקו לא נמצא.");
+  const action: Action = route.mode === "loading" ? "load" : "unload";
+  if (!(action === "load" ? input.access.load : input.access.unload)) throw new ShippingError(action === "load" ? "אין לך הרשאה להעמיס בקו הזה." : "אין לך הרשאה לסמן מסירה בקו הזה.");
+  const result = await processDeliveryAction(q, { deliveryId: d.id, dailyRouteId: input.dailyRouteId, action, userId: input.userId, source: "qr_scan" });
+  return { ...result, customer: d.customer, orderNumber: d.number, stop: d.stop_order };
+}
+
+export type Label = { deliveryId: string; code: string; orderNumber: number; customer: string; address: string | null; stop: number | null; units: number; window: string | null; notes: string | null };
+
+/** One label for every delivery on the route, in loading order: the last stop is loaded first. */
+export async function routeLabels(q: Q, dailyRouteId: string): Promise<Label[]> {
+  return q<Label>(
+    `select d.id::text as "deliveryId", d.scan_code as code, o.number as "orderNumber", c.name as customer, d.address_snapshot as address, d.stop_order as stop,
+            coalesce((select sum(l.quantity) from delivery_lines l where l.delivery_id = d.id), 0)::float as units,
+            nullif(concat_ws('–', to_char(d.window_from, 'HH24:MI'), to_char(d.window_to, 'HH24:MI')), '') as window, d.shipping_notes as notes
+     from deliveries d join orders o on o.id = d.order_id join customers c on c.id = o.customer_id
+     where d.daily_route_id = $1 and d.status <> 'cancelled' order by d.stop_order desc, o.number`,
+    [dailyRouteId],
+  );
+}
