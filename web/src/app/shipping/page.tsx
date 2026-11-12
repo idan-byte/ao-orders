@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { dayRoutes, unassigned } from "@/lib/shipping-core";
+import { shippingAlerts } from "@/lib/alerts-core";
 import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
@@ -30,6 +31,8 @@ async function Shipping({ searchParams }: { searchParams: PageProps<"/shipping">
   const date = isDate(sp.date) ? sp.date : dates.today;
   const routes = await dayRoutes(query, date);
   const waiting = await unassigned(query, date);
+  const alerts = await shippingAlerts(query, dates.today);
+  const urgent = alerts.filter((a) => a.severity === "high").length;
   const allRoutes = await query<{ id: number; name: string }>("select id, name from routes where active order by name");
   const nav = "rounded-lg border border-line px-4 py-2";
 
@@ -38,6 +41,10 @@ async function Shipping({ searchParams }: { searchParams: PageProps<"/shipping">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold">מערך השילוח</h1>
         <div className="flex flex-wrap gap-2">
+          <Link id="alerts-link" href="/shipping/alerts" data-open={alerts.length} className={`${nav} ${urgent > 0 ? "border-2 border-foreground font-medium" : ""}`}>
+            התראות וחריגים{alerts.length > 0 ? ` · ${alerts.length}` : ""}
+            {urgent > 0 ? ` (${urgent} דחופות)` : ""}
+          </Link>
           <Link id="routes-link" href="/shipping/routes" className={nav}>
             ניהול קווים
           </Link>

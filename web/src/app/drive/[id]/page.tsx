@@ -8,7 +8,7 @@ import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { TapAction } from "@/components/tap-action";
-import { deliveryAction, departAction } from "../actions";
+import { closeRouteAction, deliveryAction, departAction } from "../actions";
 
 const panel = "rounded-xl border border-line bg-surface p-4";
 const nf = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 3 });
@@ -174,6 +174,20 @@ async function WorkRoute({ params, searchParams }: Pick<PageProps<"/drive/[id]">
           ))}
         </ol>
       )}
+
+      {!loading && access.manage && done < total ? (
+        <section className={panel} id="close-route">
+          <h2 className="mb-1 font-display text-base font-bold">סגירת הקו בלי למסור הכול</h2>
+          <p className="mb-3 text-sm text-muted">כשאספקה חזרה למפעל או לא נמסרה. כל אספקה שלא סומנה כנמסרה תסומן כחריגה עם הסיבה, וההזמנה שלה תחכה להחלטה.</p>
+          <ActionForm action={closeRouteAction} submit="סגור את הקו" primary={false}>
+            <input type="hidden" name="daily_route_id" value={id} />
+            <label className="flex flex-col gap-1 text-sm text-muted">
+              למה האספקות לא נמסרו
+              <input name="reason" required minLength={3} className="w-72 max-w-full rounded-lg border border-line bg-surface px-3 py-2 text-foreground" />
+            </label>
+          </ActionForm>
+        </section>
+      ) : null}
 
       {loading && access.load ? (
         <section className={panel} id="depart">

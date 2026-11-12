@@ -12,7 +12,7 @@ const A = `טונה ${tag}`;
 const B = `חביתה ${tag}`;
 const rnd = () => "05" + String(Math.floor(Math.random() * 1e8)).padStart(8, "0");
 // A random far-future Tuesday that no other run is likely to share.
-const first = new Date(Date.UTC(2040 + Math.floor(Math.random() * 50), Math.floor(Math.random() * 12), 1 + Math.floor(Math.random() * 20)));
+const first = new Date(Date.UTC(3400 + Math.floor(Math.random() * 200), Math.floor(Math.random() * 12), 1 + Math.floor(Math.random() * 20)));
 first.setUTCDate(first.getUTCDate() + ((9 - first.getUTCDay()) % 7));
 const DAY = first.toISOString().slice(0, 10);
 
