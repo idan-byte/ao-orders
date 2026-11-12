@@ -2,7 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { readdir, readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { connection } from "next/server";
-import { normalizeMobile } from "@/lib/auth-core";
+import { normalizeMobile, type Q } from "@/lib/auth-core";
 
 // Development database: PostgreSQL embedded in the Node process (PGlite), stored under web/.data.
 // Production will use a regular PostgreSQL server behind the same query() function.
@@ -78,6 +78,16 @@ async function seedCatalog(db: PGlite) {
 
 export function getDb(): Promise<PGlite> {
   return (globalForDb.__aoDb ??= open());
+}
+
+/** Runs several statements as one unit: either all of them take effect or none. */
+export async function withTransaction<T>(fn: (q: Q) => Promise<T>): Promise<T> {
+  await connection();
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    const q = (async (sql: string, params: unknown[] = []) => (await tx.query(sql, params)).rows) as Q;
+    return fn(q);
+  });
 }
 
 export async function query<T extends Row = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
