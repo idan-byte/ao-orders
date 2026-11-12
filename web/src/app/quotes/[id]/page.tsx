@@ -9,8 +9,8 @@ import { CopyLink } from "@/components/copy-link";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { QuoteDocument } from "@/components/quote-document";
-import { approveManualAction, rejectQuoteAction } from "../actions";
-import { QuoteEditor, type EditorInitial, type EditorProduct } from "./quote-editor";
+import { LinesEditor, type EditorInitial, type EditorProduct } from "@/components/lines-editor";
+import { approveManualAction, rejectQuoteAction, saveQuoteAction } from "../actions";
 
 const panel = "rounded-xl border border-line bg-surface p-4";
 const field = "rounded-lg border border-line bg-surface px-3 py-2 text-foreground";
@@ -179,7 +179,7 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
           <h2 className="font-display text-lg font-bold">
             {latest.sent_at ? `תיקון ההצעה (שמירה תפתח גרסה ${latest.version + 1})` : `עריכת גרסה ${latest.version}`}
           </h2>
-          <QuoteEditor key={`${latest.id}-${latest.sent_at ?? "draft"}`} initial={editor.initial} products={editor.products} addresses={editor.addresses} />
+          <LinesEditor key={`${latest.id}-${latest.sent_at ?? "draft"}`} mode="quote" idName="quote_id" action={saveQuoteAction} initial={editor.initial} products={editor.products} addresses={editor.addresses} />
         </>
       ) : null}
 

@@ -59,7 +59,7 @@ try {
 
   // --- administrator
   const admin = await signIn(ADMIN);
-  check("admin navigation", await navLabels(admin.page), ["דשבורד", "מכירות", "הצעות מחיר", "לקוחות", "קטלוג", "משתמשים"]);
+  check("admin navigation", await navLabels(admin.page), ["דשבורד", "מכירות", "הצעות מחיר", "הזמנות", "לקוחות", "קטלוג", "משתמשים"]);
   check("session cookie is not readable by scripts", await admin.page.evaluate(() => document.cookie.includes("ao_session")), false);
 
   await admin.page.goto(BASE + "/users");
@@ -94,7 +94,7 @@ try {
 
   // --- department manager: catalog without prices, no users
   const m = await signIn(manager.mobile);
-  check("department manager navigation", await navLabels(m.page), ["דשבורד", "קטלוג"]);
+  check("department manager navigation", await navLabels(m.page), ["דשבורד", "הזמנות", "קטלוג"]);
   check("department manager: catalog opens", await h1(m.page, "/catalog"), "קטלוג");
   await m.page.waitForSelector("main table");
   check("department manager: no price column", (await m.page.content()).includes("מחיר בסיס לפני"), false);

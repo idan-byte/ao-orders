@@ -2,7 +2,11 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { computeTotals, VAT_RATE } from "@/lib/quote-totals";
-import { saveQuoteAction, type QuoteActionState } from "../actions";
+
+// One editor for three jobs: a quote, a new order, and a change to an existing delivery.
+// The server action it submits to is passed in, so the same lines, prices and live totals serve all three.
+type State = { error?: string; ok?: string };
+export type EditorMode = "quote" | "order" | "delivery";
 
 export type EditorProduct = { sku: string; name: string; price: number; agreed: boolean; vatExempt: boolean };
 export type EditorLine = { key: string; sku: string; description: string; quantity: string; unitPrice: string; discountPct: string; deliveryDate: string };
@@ -30,8 +34,22 @@ const num = (s: string) => Number(String(s).replace(",", "."));
 let counter = 0;
 const newKey = () => `n${++counter}`;
 
-export function QuoteEditor({ initial, products, addresses }: { initial: EditorInitial; products: EditorProduct[]; addresses: { id: string; text: string }[] }) {
-  const [state, action, pending] = useActionState<QuoteActionState, FormData>(saveQuoteAction, {});
+export function LinesEditor({
+  initial,
+  products,
+  addresses,
+  action: serverAction,
+  mode,
+  idName,
+}: {
+  initial: EditorInitial;
+  products: EditorProduct[];
+  addresses: { id: string; text: string }[];
+  action: (prev: State, formData: FormData) => Promise<State>;
+  mode: EditorMode;
+  idName: string;
+}) {
+  const [state, action, pending] = useActionState<State, FormData>(serverAction, {});
   const [lines, setLines] = useState<EditorLine[]>(initial.lines);
   const [head, setHead] = useState({
     discountPct: initial.discountPct,
@@ -65,7 +83,7 @@ export function QuoteEditor({ initial, products, addresses }: { initial: EditorI
 
   return (
     <form action={action} className="flex flex-col gap-4">
-      <input type="hidden" name="quote_id" value={initial.quoteId} />
+      <input type="hidden" name={idName} value={initial.quoteId} />
       <input type="hidden" name="payload" value={payload} />
 
       <section className="rounded-xl border border-line bg-surface p-4">
@@ -94,11 +112,11 @@ export function QuoteEditor({ initial, products, addresses }: { initial: EditorI
               ))}
             </select>
           </label>
-          <label className={label}>
+          <label className={label} hidden={mode !== "quote"}>
             ההצעה בתוקף עד
             <input id="q-valid-until" type="date" value={head.validUntil} onChange={setH("validUntil")} className={field} />
           </label>
-          <label className={label}>
+          <label className={label} hidden={mode !== "quote"}>
             תנאי תשלום
             <input id="q-payment-terms" value={head.paymentTerms} onChange={setH("paymentTerms")} placeholder="למשל: שוטף + 30" className={field} />
           </label>
@@ -116,7 +134,7 @@ export function QuoteEditor({ initial, products, addresses }: { initial: EditorI
                 <th className="px-1.5 py-1.5 text-start font-medium">כמות</th>
                 <th className="px-1.5 py-1.5 text-start font-medium">מחיר ליחידה</th>
                 <th className="px-1.5 py-1.5 text-start font-medium">הנחה %</th>
-                <th className="px-1.5 py-1.5 text-start font-medium">אספקה בתאריך אחר</th>
+                <th hidden={mode === "delivery"} className="px-1.5 py-1.5 text-start font-medium">אספקה בתאריך אחר</th>
                 <th className="px-1.5 py-1.5 text-end font-medium">סה״כ</th>
                 <th className="px-1.5 py-1.5" />
               </tr>
@@ -159,7 +177,7 @@ export function QuoteEditor({ initial, products, addresses }: { initial: EditorI
                     <td className="px-1.5 py-2">
                       <input aria-label={`הנחה, שורה ${i + 1}`} inputMode="decimal" dir="ltr" value={l.discountPct} onChange={(e) => patch(l.key, { discountPct: e.target.value })} className={`${field} w-16`} />
                     </td>
-                    <td className="px-1.5 py-2">
+                    <td hidden={mode === "delivery"} className="px-1.5 py-2">
                       <input aria-label={`תאריך אספקה, שורה ${i + 1}`} data-line-date={i} type="date" value={l.deliveryDate} onChange={(e) => patch(l.key, { deliveryDate: e.target.value })} className={field} />
                     </td>
                     <td className="px-1.5 py-2 text-end">{money.format(lineTotal)}</td>
@@ -184,7 +202,7 @@ export function QuoteEditor({ initial, products, addresses }: { initial: EditorI
         </button>
 
         <div className="mt-4 flex flex-wrap items-start justify-between gap-6">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-3" hidden={mode === "delivery"}>
             <label className={label}>
               הנחה כללית %
               <input id="q-discount" inputMode="decimal" dir="ltr" value={head.discountPct} onChange={setH("discountPct")} className={`${field} w-20`} />
@@ -227,24 +245,32 @@ export function QuoteEditor({ initial, products, addresses }: { initial: EditorI
         <h2 className="mb-3 font-display text-base font-bold">הערות</h2>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
           <label className={label}>
-            הערות ללקוח (מופיעות בהצעה)
+            {mode === "quote" ? "הערות ללקוח (מופיעות בהצעה)" : "הערות לשילוח"}
             <textarea id="q-customer-notes" rows={3} value={head.customerNotes} onChange={setH("customerNotes")} className={field} />
           </label>
           <label className={label}>
-            הערות פנימיות (לא מופיעות בהצעה)
+            {mode === "quote" ? "הערות פנימיות (לא מופיעות בהצעה)" : "הערות לייצור"}
             <textarea id="q-internal-notes" rows={3} value={head.internalNotes} onChange={setH("internalNotes")} className={field} />
           </label>
         </div>
       </section>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button name="intent" value="save" disabled={pending} className="rounded-lg border border-line px-4 py-2.5 disabled:opacity-60">
-          שמור טיוטה
-        </button>
-        <button name="intent" value="send" disabled={pending} className="rounded-lg bg-accent px-4 py-2.5 font-medium text-surface disabled:opacity-60">
-          שמור ונעל לשליחה ללקוח
-        </button>
-        <span className="text-sm text-muted">אחרי נעילה, שינוי נוסף יפתח גרסה {initial.version + 1}.</span>
+        {mode === "quote" ? (
+          <>
+            <button name="intent" value="save" disabled={pending} className="rounded-lg border border-line px-4 py-2.5 disabled:opacity-60">
+              שמור טיוטה
+            </button>
+            <button name="intent" value="send" disabled={pending} className="rounded-lg bg-accent px-4 py-2.5 font-medium text-surface disabled:opacity-60">
+              שמור ונעל לשליחה ללקוח
+            </button>
+            <span className="text-sm text-muted">אחרי נעילה, שינוי נוסף יפתח גרסה {initial.version + 1}.</span>
+          </>
+        ) : (
+          <button name="intent" value="save" disabled={pending} className="rounded-lg bg-accent px-4 py-2.5 font-medium text-surface disabled:opacity-60">
+            {pending ? "שומר…" : mode === "order" ? "פתח הזמנה" : "שמור שינויים"}
+          </button>
+        )}
       </div>
       {state.error ? (
         <p role="alert" className="rounded-lg bg-sunken px-3 py-2 text-sm font-medium">
