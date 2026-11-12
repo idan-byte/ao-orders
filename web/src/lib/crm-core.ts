@@ -32,6 +32,8 @@ export type NewLead = {
   summary: string;
   ownerId: string;
   followUpDate?: string | null;
+  /** The incoming source (mailbox or WhatsApp number) the inquiry arrived at, when it is known. */
+  channelId?: number | null;
 };
 
 /** A lead belongs either to an existing customer or to a named person who is not a customer yet. */
@@ -46,9 +48,14 @@ export async function createLead(q: Q, input: NewLead): Promise<string> {
     const [c] = await q("select 1 from customers where id = $1 and active", [input.customerId]);
     if (!c) throw new CrmError("הלקוח לא נמצא.");
   }
+  const channelId = input.channelId ?? null;
+  if (channelId !== null) {
+    const [ch] = await q("select 1 from comm_channels where id = $1 and active", [channelId]);
+    if (!ch) throw new CrmError("מקור הקליטה שנבחר אינו פעיל.");
+  }
   const [lead] = await q<{ id: string }>(
-    "insert into leads (customer_id, contact_name, contact_phone, source, summary, owner_id) values ($1, $2, $3, $4, $5, $6) returning id::text",
-    [isUuid(input.customerId) ? input.customerId : null, contactName, clean(input.contactPhone), input.source, summary, input.ownerId],
+    "insert into leads (customer_id, contact_name, contact_phone, source, summary, owner_id, channel_id) values ($1, $2, $3, $4, $5, $6, $7) returning id::text",
+    [isUuid(input.customerId) ? input.customerId : null, contactName, clean(input.contactPhone), input.source, summary, input.ownerId, channelId],
   );
   await addActivity(q, { leadId: lead.id, customerId: isUuid(input.customerId) ? input.customerId : null, kind: "system", body: `פנייה נפתחה (${input.source})`, userId: input.ownerId });
   if (input.followUpDate) await addTask(q, { leadId: lead.id, title: "לחזור לפונה", dueDate: input.followUpDate, ownerId: input.ownerId, createdBy: input.ownerId });

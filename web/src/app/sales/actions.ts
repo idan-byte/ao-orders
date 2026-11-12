@@ -15,7 +15,7 @@ export async function createLeadAction(_prev: CrmActionState, fd: FormData): Pro
   let leadId: string;
   try {
     leadId = await withTransaction((q) =>
-      createLead(q, { customerId: s(fd, "customer_id") || null, contactName: s(fd, "contact_name"), contactPhone: s(fd, "contact_phone"), source: s(fd, "source"), summary: s(fd, "summary"), ownerId: user.id, followUpDate: s(fd, "follow_up") || null }),
+      createLead(q, { customerId: s(fd, "customer_id") || null, contactName: s(fd, "contact_name"), contactPhone: s(fd, "contact_phone"), source: s(fd, "source"), summary: s(fd, "summary"), ownerId: user.id, followUpDate: s(fd, "follow_up") || null, channelId: /^\d{1,9}$/.test(s(fd, "channel_id")) ? Number(s(fd, "channel_id")) : null }),
     );
   } catch (e) {
     return { error: message(e) };

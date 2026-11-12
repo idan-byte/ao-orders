@@ -8,6 +8,7 @@ import { ActionForm } from "@/components/action-form";
 import { TaskList, type TaskRow } from "@/components/crm-blocks";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
+import { activeChannels } from "@/lib/comm-core";
 import { createLeadAction } from "./actions";
 
 type Lead = { id: string; display_name: string; summary: string; source: string; stage: LeadStage; quote_number: number | null; quote_total: number | null; lost_reason: string | null; owner: string | null; created_at: string };
@@ -48,6 +49,8 @@ async function SalesContent({ searchParams }: { searchParams: PageProps<"/sales"
   );
   const [meta] = await query<{ today: string }>("select (now() at time zone 'Asia/Jerusalem')::date::text as today");
   const customers = canEdit ? await query<{ id: string; name: string }>("select id::text, name from customers where active order by name") : [];
+  // The mailboxes and WhatsApp numbers set under settings > communication.
+  const channels = canEdit ? await activeChannels(query) : [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -89,6 +92,19 @@ async function SalesContent({ searchParams }: { searchParams: PageProps<"/sales"
                 ))}
               </select>
             </label>
+            {channels.length > 0 ? (
+              <label className={label}>
+                התקבל ב
+                <select id="lead-channel" name="channel_id" defaultValue="" className={`${field} max-w-64`}>
+                  <option value="">לא צוין</option>
+                  {channels.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.text}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className={`${label} min-w-0 flex-1`}>
               מה ביקשו
               <input id="lead-summary" name="summary" required className={field} />
