@@ -136,6 +136,10 @@ try {
   const before = new Set(await readdir(outbox).catch(() => []));
   await admin.goto(quoteUrl);
   await admin.waitForSelector("#email-to");
+  // Safety: this test must never send a real email. If the server has a working mail server, the email part is skipped.
+  const mailIsLive = !(await text(admin, "#quote-email")).includes("לא הוגדר שרת דואר");
+  if (mailIsLive) console.log("skip the email checks: a real mail server is configured, and this test does not send real email");
+  if (!mailIsLive) {
   await admin.fill("#email-to", "customer@example.com");
   await admin.fill("#email-message", `בהמשך לשיחתנו ${tag}`);
   await admin.click("#quote-email button");
@@ -151,6 +155,8 @@ try {
   check("the saved message has the recipient, the personal note and the letterhead's business name", [message.includes("To: customer@example.com"), message.includes(`בהמשך לשיחתנו ${tag}`), message.includes(TITLE)], [true, true, true]);
   check("no approval link is promised while the system has no public address", message.includes("/q/"), false);
   check("the PDF was attached", [pdf ? (await readFile(path.join(outbox, pdf))).subarray(0, 5).toString("latin1") : null, pdf ? (await stat(path.join(outbox, pdf))).size > 5000 : false], ["%PDF-", true]);
+
+  }
 
   // ---------- back to the default; a letterhead in use cannot vanish
   await admin.selectOption("#letterhead-select", "");

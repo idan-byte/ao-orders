@@ -11,11 +11,12 @@ import type { EmailStatus, QuoteEmail } from "@/lib/mail-core";
 export type Attachment = { filename: string; content: Buffer; contentType: string };
 export type SendResult = { status: EmailStatus; error: string | null; savedTo?: string };
 
-export const mailConfigured = () => !!process.env.SMTP_HOST;
+// A server that needs a login counts as configured only once its password is filled in.
+export const mailConfigured = () => !!process.env.SMTP_HOST && (!process.env.SMTP_USER || !!process.env.SMTP_PASSWORD);
 
 export async function sendEmail(mail: QuoteEmail, attachments: Attachment[], saveAs: string): Promise<SendResult> {
   if (!mailConfigured()) {
-    if (process.env.NODE_ENV === "production") return { status: "failed", error: "לא הוגדר שרת דואר (SMTP_HOST)." };
+    if (process.env.NODE_ENV === "production") return { status: "failed", error: "לא הוגדר שרת דואר (SMTP_HOST, ואם יש שם משתמש גם SMTP_PASSWORD)." };
     const dir = path.join(process.cwd(), ".data", "outbox");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, `${saveAs}.txt`), `To: ${mail.to}\nSubject: ${mail.subject}\n\n${mail.text}\n`, "utf8");
@@ -30,6 +31,7 @@ export async function sendEmail(mail: QuoteEmail, attachments: Attachment[], sav
       host: process.env.SMTP_HOST,
       port,
       secure: port === 465,
+      requireTLS: port !== 465,
       auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD ?? "" } : undefined,
     });
     await transport.sendMail({ from, to: mail.to, subject: mail.subject, text: mail.text, html: mail.html, attachments });
