@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { query, withTransaction } from "@/lib/db";
 import { assertPermission } from "@/lib/auth";
+import { logQuoteEvent } from "@/lib/crm-core";
 import { approveQuote, createQuote, findByToken, QuoteError, rejectQuote, saveDraft, sendQuote, type DraftInput } from "@/lib/quotes-core";
 
 export type QuoteActionState = { error?: string; ok?: string };
@@ -18,9 +19,19 @@ export async function createQuoteAction(_prev: QuoteActionState, formData: FormD
   const user = await assertPermission("quotes.edit");
   const customerId = String(formData.get("customer_id") ?? "");
   if (!/^[0-9a-f-]{36}$/i.test(customerId)) return { error: "יש לבחור לקוח." };
+  const leadRaw = String(formData.get("lead_id") ?? "");
+  const leadId = /^[0-9a-f-]{36}$/i.test(leadRaw) ? leadRaw : null;
+  if (leadId) {
+    const [lead] = await query("select 1 from leads where id = $1 and customer_id = $2", [leadId, customerId]);
+    if (!lead) return { error: "הפנייה אינה שייכת ללקוח הזה." };
+  }
   let quoteId: string;
   try {
-    const created = await withTransaction((q) => createQuote(q, customerId, user.id));
+    const created = await withTransaction(async (q) => {
+      const c = await createQuote(q, customerId, user.id, leadId);
+      await logQuoteEvent(q, c.quoteId, `נפתחה הצעת מחיר ${c.number}`, user.id);
+      return c;
+    });
     quoteId = created.quoteId;
     await audit(user.id, "create_quote", quoteId, { customerId, number: created.number });
   } catch (e) {
@@ -76,6 +87,7 @@ export async function saveQuoteAction(_prev: QuoteActionState, formData: FormDat
     const result = await withTransaction(async (q) => {
       const saved = await saveDraft(q, quoteId, draft);
       const sent = send ? await sendQuote(q, quoteId) : null;
+      if (sent) await logQuoteEvent(q, quoteId, `הצעת מחיר נשלחה (גרסה ${sent.version}, ${saved.totals.total.toFixed(2)} ש״ח כולל מע״מ)`, user.id);
       return { saved, sent };
     });
     await audit(user.id, send ? "send_quote" : "save_quote", quoteId, { version: result.saved.version, total: result.saved.totals.total });
@@ -92,7 +104,11 @@ export async function approveManualAction(_prev: QuoteActionState, formData: For
   const versionId = String(formData.get("version_id") ?? "");
   const name = String(formData.get("name") ?? "");
   try {
-    const r = await withTransaction((q) => approveQuote(q, quoteId, versionId, { method: "manual", name, userId: user.id }));
+    const r = await withTransaction(async (q) => {
+      const res = await approveQuote(q, quoteId, versionId, { method: "manual", name, userId: user.id });
+      if (!res.alreadyApproved) await logQuoteEvent(q, quoteId, `הצעת מחיר אושרה ידנית (${name.trim()}). נפתחה הזמנה ${res.orderNumber}`, user.id);
+      return res;
+    });
     refresh();
     return { ok: `ההצעה אושרה ונפתחה הזמנה ${r.orderNumber}.` };
   } catch (e) {
@@ -105,7 +121,10 @@ export async function rejectQuoteAction(_prev: QuoteActionState, formData: FormD
   const quoteId = String(formData.get("quote_id") ?? "");
   const reason = String(formData.get("reason") ?? "");
   try {
-    await withTransaction((q) => rejectQuote(q, quoteId, reason));
+    await withTransaction(async (q) => {
+      await rejectQuote(q, quoteId, reason);
+      await logQuoteEvent(q, quoteId, `הצעת מחיר נסגרה כנדחתה: ${reason.trim()}`, user.id);
+    });
     await audit(user.id, "reject_quote", quoteId, { reason });
     refresh();
     return { ok: "ההצעה נסגרה כנדחתה." };
@@ -121,7 +140,10 @@ export async function approveByLinkAction(_prev: QuoteActionState, formData: For
   const found = await findByToken(query, token);
   if (!found) return { error: "הקישור אינו בתוקף. ייתכן שההצעה עודכנה. אפשר לפנות אלינו לקבלת קישור חדש." };
   try {
-    await withTransaction((q) => approveQuote(q, found.quoteId, found.versionId, { method: "link", name }));
+    await withTransaction(async (q) => {
+      const res = await approveQuote(q, found.quoteId, found.versionId, { method: "link", name });
+      if (!res.alreadyApproved) await logQuoteEvent(q, found.quoteId, `הלקוח אישר את ההצעה בקישור (${name.trim()}). נפתחה הזמנה ${res.orderNumber}`, null);
+    });
     await query("insert into audit_log (action, entity_type, entity_id, after) values ('approve_quote_by_link', 'quote', $1, $2)", [found.quoteId, JSON.stringify({ versionId: found.versionId, name: name.trim() })]);
     refresh();
     return { ok: "תודה, ההצעה אושרה." };

@@ -7,6 +7,7 @@ import { isSuspiciousPrice } from "@/lib/customers-core";
 import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
+import { TaskForm, TaskList, Timeline, type ActivityRow, type TaskRow } from "@/components/crm-blocks";
 import { addAddressAction, addContactAction, approveAllPricesAction, approvePriceAction, removePriceAction, setPriceAction } from "../actions";
 
 type Customer = {
@@ -76,6 +77,27 @@ async function CustomerContent({ params }: { params: PageProps<"/customers/[id]"
   const products = canEditPrices
     ? await query<{ sku: string; name: string }>("select p.sku, p.name from products p join product_ops o on o.sku = p.sku where o.orderable order by p.name")
     : [];
+  const canCrm = can(user.role, "leads.edit");
+  const activities = can(user.role, "leads.view")
+    ? await query<ActivityRow>(
+        "select a.id::text, a.kind, a.body, a.created_at::text, u.full_name as who from activities a left join users u on u.id = a.user_id where a.customer_id = $1 order by a.created_at desc, a.id desc limit 100",
+        [id],
+      )
+    : null;
+  const tasks = activities
+    ? await query<TaskRow>(
+        `select t.id::text, t.title, t.due_date::text, false as done, t.due_date < $2::date as overdue, u.full_name as who
+         from tasks t left join users u on u.id = t.owner_id where t.customer_id = $1 and t.done_at is null order by t.due_date`,
+        [id, c.today],
+      )
+    : [];
+  const [summary] = await query<{ quotes: number; open_quotes: number; orders: number; ordered: number }>(
+    `select (select count(*)::int from quotes where customer_id = $1) as quotes,
+            (select count(*)::int from quotes where customer_id = $1 and status in ('draft', 'sent', 'follow_up')) as open_quotes,
+            (select count(*)::int from orders where customer_id = $1) as orders,
+            coalesce((select sum(l.quantity * l.unit_price * (1 - l.discount_pct / 100)) from delivery_lines l join deliveries d on d.id = l.delivery_id join orders o on o.id = d.order_id where o.customer_id = $1), 0)::float as ordered`,
+    [id],
+  );
   const pending = prices.filter((p) => !p.approved);
   const approved = prices.filter((p) => p.approved);
 
@@ -194,6 +216,34 @@ async function CustomerContent({ params }: { params: PageProps<"/customers/[id]"
           </ActionForm>
         ) : null}
       </section>
+
+      {activities ? (
+        <section className={panel} id="customer-history">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-base font-bold">היסטוריה ומעקב</h2>
+            <div className="flex flex-wrap gap-2">
+              {canCrm ? (
+                <Link href={`/sales?customer=${c.id}`} className={small}>
+                  פנייה חדשה
+                </Link>
+              ) : null}
+              {can(user.role, "quotes.edit") ? (
+                <Link href={`/quotes?customer=${c.id}`} className={small}>
+                  הצעת מחיר חדשה
+                </Link>
+              ) : null}
+            </div>
+          </div>
+          <p className="mb-3 text-sm text-muted" id="customer-summary">
+            {summary.quotes} הצעות מחיר ({summary.open_quotes} פתוחות) · {summary.orders} הזמנות{showPrices && summary.ordered > 0 ? ` · ${money.format(summary.ordered)} בהזמנות, לפני מע״מ` : ""}
+          </p>
+          <div className="mb-3 flex flex-col gap-3">
+            <TaskList rows={tasks} canEdit={canCrm} empty="אין משימות פתוחות ללקוח." />
+            {canCrm ? <TaskForm target={{ customerId: c.id }} today={c.today} /> : null}
+          </div>
+          <Timeline rows={activities} target={{ customerId: c.id }} canEdit={canCrm} />
+        </section>
+      ) : null}
 
       {showPrices ? (
         <section className={panel}>

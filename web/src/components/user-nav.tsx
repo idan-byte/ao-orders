@@ -5,6 +5,7 @@ import { signOutAction } from "@/app/login/actions";
 
 const NAV: { href: string; label: string; permission: Permission }[] = [
   { href: "/", label: "דשבורד", permission: "dashboard.view" },
+  { href: "/sales", label: "מכירות", permission: "leads.view" },
   { href: "/quotes", label: "הצעות מחיר", permission: "quotes.view" },
   { href: "/customers", label: "לקוחות", permission: "customers.view" },
   { href: "/catalog", label: "קטלוג", permission: "catalog.view" },
