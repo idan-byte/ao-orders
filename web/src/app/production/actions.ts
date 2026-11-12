@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { query, withTransaction } from "@/lib/db";
 import { assertPermission } from "@/lib/auth";
 import type { SessionUser } from "@/lib/auth-core";
-import { acknowledgeChanges, lockPlan, markProduced, moveShift, unlockPlan } from "@/lib/production-core";
+import { acknowledgeChanges, lockPlan, markProduced, moveShift, ProductionError, setLockTime, SHIFTS, unlockPlan } from "@/lib/production-core";
 import { isIsoDate } from "@/lib/production-access";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "");
@@ -77,4 +77,22 @@ export async function moveShiftAction(fd: FormData): Promise<void> {
     // Unknown shift value: nothing moved.
   }
   refresh();
+}
+
+export async function lockTimesAction(_prev: { error?: string; ok?: string }, fd: FormData): Promise<{ error?: string; ok?: string }> {
+  const user = await assertPermission("production.lock");
+  const departmentId = user.departmentId ?? Number(s(fd, "department_id"));
+  if (!Number.isInteger(departmentId)) return { error: "המחלקה לא נמצאה." };
+  try {
+    await withTransaction(async (q) => {
+      for (const shift of SHIFTS.keys()) {
+        const offset = s(fd, `offset_${shift}`);
+        await setLockTime(q, departmentId, shift, offset === "" ? null : { dayOffset: Number(offset), time: s(fd, `time_${shift}`) }, user.id);
+      }
+    });
+    refresh();
+    return { ok: "שעות הנעילה נשמרו. הנעילה נבדקת כל רבע שעה." };
+  } catch (e) {
+    return { error: e instanceof ProductionError ? e.message : "הפעולה נכשלה. שום דבר לא נשמר." };
+  }
 }

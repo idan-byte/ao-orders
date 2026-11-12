@@ -25,17 +25,17 @@ type Snapshot = Record<string, { quantity: number; label: string }>;
 const snapshotOf = (rows: PlanRow[]): Snapshot => Object.fromEntries(rows.map((r) => [key(r.sku, r.variantId), { quantity: r.quantity, label: r.variant ? `${r.product} · ${r.variant}` : r.product }]));
 
 /** Locks one shift of one department for a delivery date, remembering exactly what the plan said at that moment. */
-export async function lockPlan(q: Q, date: string, departmentId: number, shift: number, userId: string): Promise<string> {
+export async function lockPlan(q: Q, date: string, departmentId: number, shift: number, userId: string | null, auto = false): Promise<string> {
   if (!(shift in SHIFTS)) throw new ProductionError("המשמרת אינה מוכרת.");
   const rows = (await planRows(q, date, departmentId)).filter((r) => r.shift === shift);
   const [existing] = await q<{ id: string; locked_at: string | null }>("select id::text, locked_at::text from production_plans where plan_date = $1::date and department_id = $2 and shift = $3", [date, departmentId, shift]);
   if (existing?.locked_at) throw new ProductionError("המשמרת כבר נעולה.");
   const snapshot = JSON.stringify(snapshotOf(rows));
   if (existing) {
-    await q("update production_plans set locked_at = now(), locked_by = $2, snapshot = $3 where id = $1", [existing.id, userId, snapshot]);
+    await q("update production_plans set locked_at = now(), locked_by = $2, snapshot = $3, auto_locked_at = case when $4::boolean then now() else auto_locked_at end where id = $1", [existing.id, userId, snapshot, auto]);
     return existing.id;
   }
-  const [plan] = await q<{ id: string }>("insert into production_plans (plan_date, department_id, shift, locked_at, locked_by, snapshot) values ($1::date, $2, $3, now(), $4, $5) returning id::text", [date, departmentId, shift, userId, snapshot]);
+  const [plan] = await q<{ id: string }>("insert into production_plans (plan_date, department_id, shift, locked_at, locked_by, snapshot, auto_locked_at) values ($1::date, $2, $3, now(), $4, $5, case when $6::boolean then now() end) returning id::text", [date, departmentId, shift, userId, snapshot, auto]);
   return plan.id;
 }
 
@@ -169,4 +169,63 @@ export async function planSources(q: Q, date: string, departmentId: number): Pro
     [date, departmentId],
   );
   return rows.map((r) => ({ shift: r.shift, sku: r.sku, variantId: r.variant_id, orderId: r.order_id, orderNumber: r.number, customer: r.customer, quantity: r.quantity, window: r.window, notes: r.notes }));
+}
+
+export type LockTime = { shift: number; dayOffset: number; time: string };
+export const MAX_LOCK_OFFSET = 3;
+
+export async function lockTimes(q: Q, departmentId: number): Promise<LockTime[]> {
+  const rows = await q<{ shift: number; day_offset: number; time: string }>("select shift, day_offset, to_char(lock_time, 'HH24:MI') as time from production_lock_times where department_id = $1 order by shift", [departmentId]);
+  return rows.map((r) => ({ shift: r.shift, dayOffset: r.day_offset, time: r.time }));
+}
+
+/** Sets when a shift of a department locks by itself, or (with null) returns it to locking by hand only. */
+export async function setLockTime(q: Q, departmentId: number, shift: number, value: { dayOffset: number; time: string } | null, userId: string): Promise<void> {
+  if (!(shift in SHIFTS)) throw new ProductionError("המשמרת אינה מוכרת.");
+  const [d] = await q("select 1 from departments where id = $1", [departmentId]);
+  if (!d) throw new ProductionError("המחלקה לא נמצאה.");
+  const [before] = await q<{ day_offset: number; time: string }>("select day_offset, to_char(lock_time, 'HH24:MI') as time from production_lock_times where department_id = $1 and shift = $2", [departmentId, shift]);
+  if (value === null) {
+    if (!before) return;
+    await q("delete from production_lock_times where department_id = $1 and shift = $2", [departmentId, shift]);
+  } else {
+    if (!Number.isInteger(value.dayOffset) || value.dayOffset < 0 || value.dayOffset > MAX_LOCK_OFFSET) throw new ProductionError("יום הנעילה אינו תקין.");
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)) throw new ProductionError(`משמרת ${SHIFTS[shift]}: יש לבחור שעת נעילה.`);
+    if (before && before.day_offset === value.dayOffset && before.time === value.time) return;
+    await q(
+      `insert into production_lock_times (department_id, shift, day_offset, lock_time, updated_by) values ($1, $2, $3, $4::time, $5)
+       on conflict (department_id, shift) do update set day_offset = excluded.day_offset, lock_time = excluded.lock_time, updated_at = now(), updated_by = excluded.updated_by`,
+      [departmentId, shift, value.dayOffset, value.time, userId],
+    );
+  }
+  await q("insert into audit_log (user_id, action, entity_type, entity_id, before, after) values ($1, 'lock_time', 'department', $2, $3, $4)", [userId, `${departmentId}:${shift}`, before ? JSON.stringify(before) : null, value ? JSON.stringify(value) : null]);
+}
+
+/**
+ * Locks every plan whose lock time has passed: delivery dates from today on, for the shifts that have a lock time.
+ * A plan is locked automatically once only. If a manager unlocks it afterwards it stays open until someone locks it by hand.
+ * An empty plan is locked too, so that an order arriving after the lock time is reported as a late change.
+ * `now` exists for tests.
+ */
+export async function runAutoLock(q: Q, now: string | null = null): Promise<{ date: string; departmentId: number; shift: number }[]> {
+  const due = await q<{ department_id: number; shift: number; day: string }>(
+    `with local as (select (coalesce($1::timestamptz, now()) at time zone 'Asia/Jerusalem') as ts)
+     select t.department_id, t.shift, g.d::date::text as day
+     from local
+     cross join production_lock_times t
+     cross join lateral generate_series(local.ts::date::timestamp, (local.ts::date + t.day_offset)::timestamp, interval '1 day') g(d)
+     where (g.d::date - t.day_offset) + t.lock_time <= local.ts
+       and not exists (select 1 from production_plans pp
+                       where pp.plan_date = g.d::date and pp.department_id = t.department_id and pp.shift = t.shift
+                         and (pp.locked_at is not null or pp.auto_locked_at is not null))
+     order by day, t.department_id, t.shift`,
+    [now],
+  );
+  const locked = [];
+  for (const p of due) {
+    const planId = await lockPlan(q, p.day, p.department_id, p.shift, null, true);
+    await q("insert into audit_log (user_id, action, entity_type, entity_id, after) values (null, 'auto_lock', 'production_plan', $1, $2)", [planId, JSON.stringify({ date: p.day, departmentId: p.department_id, shift: p.shift })]);
+    locked.push({ date: p.day, departmentId: p.department_id, shift: p.shift });
+  }
+  return locked;
 }

@@ -3,7 +3,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { planRows, planSources, lockPlan, unlockPlan, lockedPlans, acknowledgeChanges, isLockedFor, markProduced, moveShift } from "../src/lib/production-core.ts";
+import { planRows, planSources, lockPlan, unlockPlan, lockedPlans, acknowledgeChanges, isLockedFor, markProduced, moveShift, lockTimes, setLockTime, runAutoLock } from "../src/lib/production-core.ts";
 import { createOrder, updateDelivery, cancelDelivery } from "../src/lib/orders-core.ts";
 
 const db = new PGlite();
@@ -106,6 +106,30 @@ check("cancelled delivery lines are never marked", (await one("select count(*)::
 // ---------- unlock
 await unlockPlan(q, planId);
 check("unlocked", [await lockedPlans(q, DAY, sand), await isLockedFor(q, DAY, ["50002"])], [[], false]);
+
+// ---------- automatic lock by time
+const at = (t) => `2027-03-09T${t}:00+02:00`; // a Tuesday, Israel winter time
+check("no lock times, nothing locks by itself", await runAutoLock(q, at("23:00")), []);
+await refuses("lock time needs an hour", () => setLockTime(q, sand, 1, { dayOffset: 1, time: "" }, user.id), "שעת נעילה");
+await refuses("lock day is limited", () => setLockTime(q, sand, 1, { dayOffset: 4, time: "20:00" }, user.id), "יום הנעילה");
+await refuses("lock time for an unknown shift", () => setLockTime(q, sand, 9, { dayOffset: 1, time: "20:00" }, user.id), "אינה מוכרת");
+await setLockTime(q, sand, 1, { dayOffset: 1, time: "20:00" }, user.id);
+await setLockTime(q, hot, 0, { dayOffset: 1, time: "14:00" }, user.id);
+check("lock times are stored per department", [await lockTimes(q, sand), await lockTimes(q, hot)], [[{ shift: 1, dayOffset: 1, time: "20:00" }], [{ shift: 0, dayOffset: 1, time: "14:00" }]]);
+check("at 19:59 only what is already due locks: today, and tomorrow's hot kitchen", await runAutoLock(q, at("19:59")), [{ date: "2027-03-09", departmentId: sand, shift: 1 }, { date: "2027-03-09", departmentId: hot, shift: 0 }, { date: "2027-03-10", departmentId: hot, shift: 0 }]);
+check("at 20:00 tomorrow's night shift locks", await runAutoLock(q, at("20:00")), [{ date: "2027-03-10", departmentId: sand, shift: 1 }]);
+check("a second run locks nothing more", await runAutoLock(q, at("20:15")), []);
+check("an order cannot slip in: the guard sees the automatic lock", await isLockedFor(q, "2027-03-10", ["50002"]), true);
+await createOrder(q, cust[0], user.id, draft([L("50002", 30, tuna)], { deliveryDate: "2027-03-10" }));
+const auto = (await lockedPlans(q, "2027-03-10", sand))[0];
+check("an order that arrives after the automatic lock is a late change, and the lock has no person behind it", [auto.lockedBy, auto.changes.map((c) => [c.before, c.after])], [null, [[0, 30]]]);
+await unlockPlan(q, auto.planId);
+check("a plan a manager unlocked is not locked again automatically", [await runAutoLock(q, at("21:00")), await lockedPlans(q, "2027-03-10", sand)], [[], []]);
+await lockPlan(q, "2027-03-10", sand, 1, user.id);
+check("and can be locked again by hand", (await lockedPlans(q, "2027-03-10", sand)).length, 1);
+await setLockTime(q, sand, 1, null, user.id);
+check("removing the lock time returns the shift to manual locking", [await lockTimes(q, sand), (await runAutoLock(q, "2027-03-10T21:00:00+02:00")).map((p) => [p.date, p.departmentId])], [[], [["2027-03-11", hot]]]);
+check("automatic locks are written to the history", (await one("select count(*)::int as n from audit_log where action = 'auto_lock' and user_id is null")).n, 5);
 
 console.log(failed ? `PRODUCTION CHECK FAILED (${failed})` : "PRODUCTION CHECK PASSED");
 process.exit(failed ? 1 : 0);
