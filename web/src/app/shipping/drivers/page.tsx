@@ -45,9 +45,10 @@ function Fields({ d }: { d?: { name: string; phone: string | null; registration:
 async function Drivers() {
   const { allowed } = await requirePermission("shipping.manage");
   if (!allowed) return <NoAccess />;
-  const drivers = await query<{ id: number; name: string; phone: string | null; registration: string | null; vehicle_description: string | null; active: boolean; routes: string | null }>(
+  const drivers = await query<{ id: number; name: string; phone: string | null; registration: string | null; vehicle_description: string | null; active: boolean; routes: string | null; login: string | null }>(
     `select d.id, d.name, d.phone, v.registration, v.description as vehicle_description, d.active,
-            (select string_agg(r.name, ', ' order by r.name) from routes r where r.default_driver_id = d.id and r.active) as routes
+            (select string_agg(r.name, ', ' order by r.name) from routes r where r.default_driver_id = d.id and r.active) as routes,
+            (select u.role::text from users u where u.mobile = d.phone and u.active) as login
      from drivers d left join vehicles v on v.id = d.vehicle_id order by d.active desc, d.name`,
   );
 
@@ -86,6 +87,9 @@ async function Drivers() {
             <input type="hidden" name="driver_id" value={d.id} />
             <Fields d={d} />
           </ActionForm>
+          <p className="mt-2 text-sm text-muted" data-login={String(d.login !== null)}>
+            {d.login ? "יש משתמש עם מספר הטלפון הזה, והנהג רואה את הקווים שלו במסך ״טעינה והפצה״." : "כדי שהנהג יעבוד מהטלפון, צריך לפתוח לו במסך המשתמשים משתמש בתפקיד נהג עם אותו מספר טלפון."}
+          </p>
         </section>
       ))}
 

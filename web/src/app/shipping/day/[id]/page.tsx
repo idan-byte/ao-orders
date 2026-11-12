@@ -60,6 +60,9 @@ async function DailyRoute({ params, searchParams }: Pick<PageProps<"/shipping/da
         <h1 className="font-display text-2xl font-bold">פרטי קו · {route.name}</h1>
         <div className="no-print flex flex-wrap items-center gap-2">
           <PrintButton />
+          <Link id="work-link" href={`/drive/${id}`} className="rounded-lg border border-line px-3 py-1.5 text-sm">
+            מסך טעינה והפצה
+          </Link>
           <Link href={`/shipping?date=${route.route_date}`} className="rounded-lg border border-line px-3 py-1.5 text-sm">
             חזרה למערך השילוח
           </Link>
