@@ -37,6 +37,7 @@ export const PERMISSIONS = [
   "production.lock",
   "shipping.view",
   "shipping.ship",
+  "shipping.manage",
   "users.manage",
   "sync.run",
   "settings.manage",
@@ -54,7 +55,7 @@ const MATRIX: Record<Role, readonly Permission[]> = {
   order_clerk: ["dashboard.view", "leads.view", "catalog.view", "customers.view", "prices.view", "quotes.view", "orders.view", "orders.edit"],
   dept_manager: ["dashboard.view", "catalog.view", "orders.view", "production.view", "production.mark", "production.lock"],
   production_worker: ["production.view", "production.mark"],
-  shipping_manager: ["dashboard.view", "orders.view", "shipping.view", "shipping.ship"],
+  shipping_manager: ["dashboard.view", "orders.view", "shipping.view", "shipping.ship", "shipping.manage"],
   loading_manager: ["shipping.view", "shipping.ship"],
   driver: ["shipping.view", "shipping.ship"],
   customer: [], // the customer portal has its own screens and sees only its own organisation
