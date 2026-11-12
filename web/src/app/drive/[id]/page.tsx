@@ -18,7 +18,7 @@ const dayFmt = new Intl.DateTimeFormat("he-IL", { timeZone: "UTC", weekday: "lon
 const todo = "w-full rounded-xl border-2 border-line bg-surface px-4 py-4 text-start text-lg font-medium";
 const small = "rounded-lg border border-line px-3 py-1.5 text-sm";
 
-type Row = { id: string; order_id: string; number: number; customer: string; address: string | null; window: string | null; units: number; status: string; loaded: boolean; stop_order: number | null; notes: string | null; phone: string | null };
+type Row = { id: string; order_id: string; number: number; customer: string; address: string | null; window: string | null; units: number; status: string; loaded: boolean; stop_order: number | null; notes: string | null; phone: string | null; boxes: number; boxes_loaded: number; boxes_unloaded: number };
 
 export default function WorkRoutePage({ params, searchParams }: PageProps<"/drive/[id]">) {
   return (
@@ -57,6 +57,9 @@ async function WorkRoute({ params, searchParams }: Pick<PageProps<"/drive/[id]">
             nullif(concat_ws('–', to_char(d.window_from, 'HH24:MI'), to_char(d.window_to, 'HH24:MI')), '') as window,
             coalesce((select sum(l.quantity) from delivery_lines l where l.delivery_id = d.id), 0)::float as units,
             d.status::text, d.loaded_at is not null as loaded, d.stop_order, d.shipping_notes as notes,
+            (select count(*)::int from delivery_boxes b where b.delivery_id = d.id) as boxes,
+            (select count(*)::int from delivery_boxes b where b.delivery_id = d.id and b.loaded_at is not null) as boxes_loaded,
+            (select count(*)::int from delivery_boxes b where b.delivery_id = d.id and b.unloaded_at is not null) as boxes_unloaded,
             (select cc.phone from customer_contacts cc where cc.customer_id = c.id and cc.phone is not null and cc.phone <> '' order by cc.full_name limit 1) as phone
      from deliveries d join orders o on o.id = d.order_id join customers c on c.id = o.customer_id
      where d.daily_route_id = $1 and d.status <> 'cancelled' order by d.stop_order, o.number`,
@@ -145,9 +148,15 @@ async function WorkRoute({ params, searchParams }: Pick<PageProps<"/drive/[id]">
                 {list.map((r) => {
                   const delivered = r.status === "delivered";
                   const marked = loading ? r.loaded : delivered;
-                  const detail = `הזמנה ${r.number} · ${nf.format(r.units)} יח׳${r.window ? ` · ${r.window}` : ""}`;
+                  const boxesDone = loading ? r.boxes_loaded : r.boxes_unloaded;
+                  const detail = `הזמנה ${r.number} · ${nf.format(r.units)} יח׳${r.boxes > 1 ? ` · ${r.boxes} ארגזים` : ""}${r.window ? ` · ${r.window}` : ""}`;
                   return (
-                    <li key={r.id} data-delivery={r.number} data-marked={String(marked)} className="flex flex-col gap-1">
+                    <li key={r.id} data-delivery={r.number} data-marked={String(marked)} data-boxes={`${boxesDone}/${r.boxes}`} className="flex flex-col gap-1">
+                      {!marked && boxesDone > 0 ? (
+                        <p data-partial className="rounded-lg bg-[#1d4f91] px-3 py-1.5 text-sm font-bold text-white">
+                          {loading ? "הועמסו" : "נמסרו"} {boxesDone} מתוך {r.boxes} ארגזים · חסרים {r.boxes - boxesDone}
+                        </p>
+                      ) : null}
                       {marked ? (
                         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-accent bg-accent-soft px-4 py-3">
                           <span className="text-lg font-medium">
@@ -213,6 +222,7 @@ async function WorkRoute({ params, searchParams }: Pick<PageProps<"/drive/[id]">
                 {missing.map((m) => (
                   <li key={m.deliveryId}>
                     עצירה {m.stop} · {m.customer} · הזמנה {m.orderNumber}
+                    {m.boxes > 1 ? ` · הועמסו ${m.loadedBoxes} מתוך ${m.boxes} ארגזים` : ""}
                   </li>
                 ))}
               </ul>

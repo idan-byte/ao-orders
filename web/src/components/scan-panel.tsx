@@ -8,6 +8,7 @@ type Decode = (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) => Prom
 
 const COLORS: Record<ScanState["kind"], string> = {
   done: "bg-accent text-surface",
+  partial: "bg-[#1d4f91] text-white",
   already: "bg-[#b25e09] text-white",
   refused: "bg-[#b42318] text-white",
 };
@@ -53,7 +54,7 @@ export function ScanPanel({ dailyRouteId, mode, scan }: { dailyRouteId: string; 
         const r = await scan(dailyRouteId, code);
         setResult(r);
         setCount((n) => n + 1);
-        navigator.vibrate?.(r.kind === "done" ? 80 : [200, 100, 200]);
+        navigator.vibrate?.(r.kind === "done" || r.kind === "partial" ? 80 : [200, 100, 200]);
       } catch {
         setResult({ kind: "refused", message: "אין תשובה מהשרת. הסריקה לא נרשמה." });
         setCount((n) => n + 1);
@@ -153,7 +154,7 @@ export function ScanPanel({ dailyRouteId, mode, scan }: { dailyRouteId: string; 
       {result ? (
         <div id="scan-result" role="status" aria-live="assertive" data-kind={result.kind} data-count={count} className={`mt-3 rounded-xl px-4 py-3 ${COLORS[result.kind]}`}>
           <div className="text-xl font-bold">
-            {result.kind === "done" ? "✓ " : result.kind === "refused" ? "✕ " : ""}
+            {result.kind === "done" || result.kind === "partial" ? "✓ " : result.kind === "refused" ? "✕ " : ""}
             {result.message}
           </div>
           {result.detail ? <div className="text-base">{result.detail}</div> : null}

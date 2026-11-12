@@ -7,7 +7,7 @@ import { resolveEvent } from "@/lib/alerts-core";
 import { clearLocation, GeoError, pendingForRoute, recordSearch, setManualLocation } from "@/lib/geo-core";
 import { geocoderEnabled, searchAddress } from "@/lib/geo";
 import { assignDelivery, moveAddress, moveStop, planDay, saveDriver, saveRoute, setAddressRoute, setDailyDriver, setDriverActive, setRouteActive, ShippingError } from "@/lib/shipping-core";
-import { setPackageCount } from "@/lib/loading-core";
+import { setBoxCount } from "@/lib/loading-core";
 
 export type ShippingState = { error?: string; ok?: string };
 const message = (e: unknown) => (e instanceof ShippingError ? e.message : "הפעולה נכשלה. שום דבר לא נשמר.");
@@ -211,9 +211,9 @@ export async function packageCountAction(_prev: ShippingState, fd: FormData): Pr
   const user = await assertPermission("shipping.manage");
   const deliveryId = s(fd, "delivery_id");
   const count = int(fd, "packages");
-  if (!isUuid(deliveryId) || count === null) return { error: "מספר האריזות צריך להיות בין 1 ל-99." };
+  if (!isUuid(deliveryId) || count === null) return { error: "מספר הארגזים צריך להיות בין 1 ל-99." };
   try {
-    await withTransaction((q) => setPackageCount(q, deliveryId, count, user.id));
+    await withTransaction((q) => setBoxCount(q, deliveryId, count, user.id));
     refresh();
     return { ok: "נשמר." };
   } catch (e) {

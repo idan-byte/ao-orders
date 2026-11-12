@@ -10,7 +10,7 @@ const g = globalThis as unknown as { __aoScheduler?: ReturnType<typeof setInterv
 
 async function tick() {
   try {
-    await systemTransaction((q) => runAuto(q));
+    await systemTransaction((q) => runAuto(q), (r) => r !== null && r.created > 0);
   } catch (e) {
     console.error("[scheduler] standing orders:", e);
     try {
@@ -21,7 +21,7 @@ async function tick() {
   }
   // Locking comes second, so orders created a moment ago are inside the locked plan and not reported as late.
   try {
-    await systemTransaction((q) => runAutoLock(q));
+    await systemTransaction((q) => runAutoLock(q), (locked) => locked.length > 0);
   } catch (e) {
     console.error("[scheduler] production lock:", e);
   }

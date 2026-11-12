@@ -96,14 +96,17 @@ export async function withTransaction<T>(fn: (q: Q) => Promise<T>): Promise<T> {
   return result;
 }
 
-/** The same, for background work that no request started (the scheduler). */
-export async function systemTransaction<T>(fn: (q: Q) => Promise<T>): Promise<T> {
+/**
+ * The same, for background work that no request started (the scheduler). The scheduler runs every few minutes
+ * and usually finds nothing to do, so the live counter moves only when `didChange` says the run changed something.
+ */
+export async function systemTransaction<T>(fn: (q: Q) => Promise<T>, didChange: (result: T) => boolean = () => true): Promise<T> {
   const db = await getDb();
   const result = await db.transaction(async (tx) => {
     const q = (async (sql: string, params: unknown[] = []) => (await tx.query(sql, params)).rows) as Q;
     return fn(q);
   });
-  await changed(db);
+  if (didChange(result)) await changed(db);
   return result;
 }
 
