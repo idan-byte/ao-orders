@@ -7,7 +7,7 @@ import path from "node:path";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { saveDriver, saveRoute, setAddressRoute, planDay, dayRoutes } from "../src/lib/shipping-core.ts";
-import { depart, parseScanCode, formatScanCode, scanPayload, scanDelivery, routeLabels, RefusedError, recordRefusal } from "../src/lib/loading-core.ts";
+import { depart, parseScanCode, formatScanCode, scanPayload, scanDelivery, routeLabels, setPackageCount, expandLabels, RefusedError, recordRefusal } from "../src/lib/loading-core.ts";
 import { createOrder } from "../src/lib/orders-core.ts";
 
 const db = new PGlite();
@@ -74,6 +74,18 @@ await refuses("two deliveries cannot share a code", () => q("update deliveries s
 // ---------- labels
 const labels = await routeLabels(q, A);
 check("a route's labels: one per delivery, last stop first, with what the loader needs to see", labels.map((l) => [l.stop, l.customer, l.units, l.code === d[l.customer].scan_code, l.address]), [[2, "בית ספר נועם", 10, true, "רחוב בית ספר נועם"], [1, "גן הדר", 10, true, "רחוב גן הדר"]]);
+
+// ---------- packages
+check("a delivery starts with one package", labels.map((l) => l.packages), [1, 1]);
+await setPackageCount(q, d["גן הדר"].id, 3, manager.id);
+const printed = expandLabels(await routeLabels(q, A));
+check("every package gets its own label, numbered, with the delivery's one code", printed.map((l) => [l.customer, l.index, l.packages, l.code === d[l.customer].scan_code]), [["בית ספר נועם", 1, 1, true], ["גן הדר", 1, 3, true], ["גן הדר", 2, 3, true], ["גן הדר", 3, 3, true]]);
+check("the change is kept in the history", await one("select before, after from audit_log where action = 'package_count' and entity_id = $1", [d["גן הדר"].id]), { before: { packages: 1 }, after: { packages: 3 } });
+await setPackageCount(q, d["גן הדר"].id, 3, manager.id);
+check("saving the same number again writes nothing", (await one("select count(*)::int as n from audit_log where action = 'package_count'")).n, 1);
+await refuses("zero packages is refused", () => setPackageCount(q, d["גן הדר"].id, 0, manager.id), "בין 1 ל-99");
+await refuses("a hundred packages is refused", () => setPackageCount(q, d["גן הדר"].id, 100, manager.id), "בין 1 ל-99");
+await refuses("half a package is refused", () => setPackageCount(q, d["גן הדר"].id, 1.5, manager.id), "בין 1 ל-99");
 
 // ---------- scanning while loading
 const first = await scan(scanPayload(d["גן הדר"].scan_code));

@@ -127,6 +127,17 @@ try {
   check("labels come in loading order, the last stop first", await admin.locator("[data-label]").evaluateAll((l) => l.map((x) => x.getAttribute("data-label"))), [c.number, b.number, a.number]);
   if (process.env.AO_SCREENSHOT) await admin.screenshot({ path: process.env.AO_SCREENSHOT.replace(/\.png$/, "-labels.png"), fullPage: true });
   // A picture of one printed label, for the stand-in camera.
+  // ---------- a delivery in three packages, and the label printer's size
+  const packs = admin.locator(`[data-packages="${c.number}"]`);
+  await packs.locator("[name=packages]").fill("3");
+  await packs.locator("button").click();
+  await admin.waitForSelector(`[data-label="${c.number}"][data-package="3"]`);
+  check("three packages print three numbered labels with the same code", [await count(admin, "[data-label]"), await count(admin, `[data-label="${c.number}"][data-code="${codes[c.number]}"]`), (await text(admin, `[data-label="${c.number}"][data-package="2"] .label-package`))], [5, 3, "אריזה 2 מתוך 3"]);
+  await admin.click('#label-format a:has-text("102×150")');
+  await admin.waitForSelector(".label-single");
+  const box = await admin.locator(".label-single [data-label]").first().evaluate((el) => { const r = el.getBoundingClientRect(); return [Math.round(r.width / r.height * 100) / 100, getComputedStyle(el).flexDirection]; });
+  check("the label printer's size is one tall label of 102 by 150", [box, await count(admin, ".label-single [data-label]")], [[0.68, "column"], 5]);
+  if (process.env.AO_SCREENSHOT) await admin.screenshot({ path: process.env.AO_SCREENSHOT.replace(/.png$/, "-single.png"), fullPage: true });
   // The QR is drawn alone on a page of its own, at an even size, as the stand-in camera needs.
   const sheet = await admin.context().newPage();
   await sheet.setContent(`<body style="margin:0;background:#fff"><div id="q" style="width:480px;height:480px">${await admin.locator(`[data-label="${b.number}"] .label-qr`).innerHTML()}</div></body>`);
