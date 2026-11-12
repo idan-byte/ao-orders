@@ -59,7 +59,17 @@ try {
 
   // --- administrator
   const admin = await signIn(ADMIN);
-  check("admin navigation", await navLabels(admin.page), ["דשבורד", "מכירות", "הצעות מחיר", "הזמנות", "קבועות", "ייצור", "שילוח", "טעינה והפצה", "לקוחות", "קטלוג", "משתמשים"]);
+  check("admin navigation", await navLabels(admin.page), ["דשבורד", "לידים ופניות", "הצעות מחיר", "הזמנות", "קבועות", "לקוחות", "קטלוג", "תוכנית ייצור", "שילוח", "טעינה והפצה", "משתמשים", "דפי לוגו"]);
+  check("the menu is grouped: two lists and the settings cog, all closed", [await admin.page.locator("header [data-nav-group]").evaluateAll((l) => l.map((e) => e.getAttribute("data-nav-group"))), await admin.page.locator("header nav a:visible").allTextContents()], [["מכירות", "ייצור", "הגדרות"], ["דשבורד"]]);
+  await admin.page.click('header [data-nav-group="מכירות"] button');
+  check("a group opens under its name", await admin.page.locator("header nav a:visible").allTextContents(), ["דשבורד", "לידים ופניות", "הצעות מחיר", "הזמנות", "קבועות", "לקוחות", "קטלוג"]);
+  await admin.page.click('header [data-nav-group="מכירות"] a:has-text("לקוחות")');
+  await admin.page.waitForURL(BASE + "/customers");
+  check("choosing a screen goes there and closes the list", await admin.page.locator("header nav a:visible").allTextContents(), ["דשבורד"]);
+  await admin.page.click('header button[aria-label="הגדרות"]');
+  check("the cog next to sign-out holds the settings screens", await admin.page.locator('header nav[aria-label="הגדרות"] a:visible').allTextContents(), ["משתמשים", "דפי לוגו"]);
+  await admin.page.keyboard.press("Escape");
+  check("Escape closes it", await admin.page.locator('header nav[aria-label="הגדרות"] a:visible').count(), 0);
   check("session cookie is not readable by scripts", await admin.page.evaluate(() => document.cookie.includes("ao_session")), false);
 
   await admin.page.goto(BASE + "/users");
@@ -87,7 +97,7 @@ try {
 
   // --- production worker: no dashboard, no catalog, no users
   const w = await signIn(worker.mobile);
-  check("production worker navigation has only production", await navLabels(w.page), ["ייצור"]);
+  check("production worker navigation has only production", await navLabels(w.page), ["תוכנית ייצור"]);
   await w.page.goto(BASE + "/");
   await w.page.waitForURL(BASE + "/production");
   check("production worker is sent from the dashboard to the production plan", new URL(w.page.url()).pathname, "/production");
@@ -96,7 +106,7 @@ try {
 
   // --- department manager: catalog without prices, no users
   const m = await signIn(manager.mobile);
-  check("department manager navigation", await navLabels(m.page), ["דשבורד", "הזמנות", "קבועות", "ייצור", "קטלוג"]);
+  check("department manager navigation", await navLabels(m.page), ["דשבורד", "הזמנות", "קבועות", "קטלוג", "תוכנית ייצור"]);
   check("department manager: catalog opens", await h1(m.page, "/catalog"), "קטלוג");
   await m.page.waitForSelector("main table");
   check("department manager: no price column", (await m.page.content()).includes("מחיר בסיס לפני"), false);
