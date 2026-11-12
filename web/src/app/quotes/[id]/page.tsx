@@ -12,6 +12,10 @@ import { QuoteDocument } from "@/components/quote-document";
 import { variantsBySku } from "@/lib/orders-data";
 import { LinesEditor, type EditorInitial, type EditorProduct } from "@/components/lines-editor";
 import { approveManualAction, rejectQuoteAction, saveQuoteAction } from "../actions";
+import { emailQuoteAction } from "../email-action";
+import { setQuoteLetterheadAction } from "@/app/letterheads/actions";
+import { emailsOf } from "@/lib/mail-core";
+import { mailConfigured } from "@/lib/mail";
 
 const panel = "rounded-xl border border-line bg-surface p-4";
 const field = "rounded-lg border border-line bg-surface px-3 py-2 text-foreground";
@@ -94,6 +98,12 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
     };
   }
   const sentDoc = lastSent ? await loadQuoteDoc(lastSent.id) : null;
+  const letterheads = await query<{ id: number; name: string; is_default: boolean; chosen: boolean }>(
+    "select l.id, l.name, l.is_default, l.id = (select letterhead_id from quotes where id = $1) as chosen from letterheads l where l.active or l.id = (select letterhead_id from quotes where id = $1) order by l.is_default desc, l.name",
+    [id],
+  );
+  const emails = await emailsOf(query, "quote", id);
+  const contactEmails = canEdit ? await query<{ email: string; full_name: string }>("select email, full_name from customer_contacts where customer_id = $1 and email is not null and email <> '' order by full_name", [quote.customer_id]) : [];
   const awaitingCustomer = quote.status === "sent" && lastSent && latest.id === lastSent.id;
 
   return (
@@ -134,13 +144,44 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
       {awaitingCustomer && lastSent?.public_token ? (
         <section className={panel}>
           <h2 className="mb-2 font-display text-base font-bold">גרסה {lastSent.version} ממתינה לאישור הלקוח</h2>
-          <p className="mb-2 text-sm text-muted">זה הקישור שהלקוח מאשר דרכו. המערכת עדיין אינה שולחת מיילים, ולכן מעתיקים אותו ושולחים ללקוח במייל או בוואטסאפ.</p>
+          <p className="mb-2 text-sm text-muted">זה הקישור שהלקוח מאשר דרכו. אפשר להעתיק אותו ולשלוח בוואטסאפ, או לשלוח את ההצעה במייל מכאן.</p>
           <CopyLink path={`/q/${lastSent.public_token}`} />
           <div className="mt-3 flex flex-wrap gap-3">
+            <a id="quote-pdf" href={`/quotes/${id}/pdf?v=${lastSent.version}`} className="rounded-lg border border-line px-4 py-2">
+              הורד PDF
+            </a>
             <Link href={`/quotes/${id}/print?v=${lastSent.version}`} className="rounded-lg border border-line px-4 py-2">
               תצוגה להדפסה ולשמירה כ-PDF
             </Link>
           </div>
+          {canEdit ? (
+            <div className="mt-4 border-t border-line pt-3" id="quote-email">
+              <h3 className="mb-1 text-sm font-medium">שליחה במייל</h3>
+              <p className="mb-2 text-sm text-muted">
+                ההצעה מצורפת כ-PDF.{" "}
+                {process.env.AO_PUBLIC_BASE_URL ? "המייל כולל גם את הקישור לאישור." : "הקישור לאישור לא ייכלל במייל, כי למערכת עדיין אין כתובת שלקוחות יכולים לפתוח."}
+                {mailConfigured() ? "" : " לא הוגדר שרת דואר, ולכן המייל לא יישלח בפועל."}
+              </p>
+              <ActionForm action={emailQuoteAction} submit="שלח במייל" pendingLabel="שולח…" primary={false}>
+                <input type="hidden" name="quote_id" value={id} />
+                <label className="flex flex-col gap-1 text-sm text-muted">
+                  אל
+                  <input id="email-to" name="to" type="email" required dir="ltr" list="email-contacts" defaultValue={contactEmails[0]?.email ?? ""} className={`${field} w-72`} />
+                  <datalist id="email-contacts">
+                    {contactEmails.map((c) => (
+                      <option key={c.email} value={c.email}>
+                        {c.full_name}
+                      </option>
+                    ))}
+                  </datalist>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-muted">
+                  הודעה אישית (לא חובה)
+                  <textarea id="email-message" name="message" rows={2} maxLength={2000} className={`${field} w-96 max-w-full`} />
+                </label>
+              </ActionForm>
+            </div>
+          ) : null}
           {canApprove ? (
             <div className="mt-4 border-t border-line pt-3">
               <h3 className="mb-2 text-sm font-medium">הלקוח אישר בטלפון או בהודעה</h3>
@@ -172,6 +213,46 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
             </div>
           ) : null}
         </section>
+      ) : null}
+
+      {emails.length > 0 ? (
+        <section className={panel}>
+          <h2 className="mb-2 font-display text-base font-bold">מיילים</h2>
+          <ul className="flex flex-col gap-1.5 text-sm" data-emails>
+            {emails.map((e) => (
+              <li key={e.id} data-email-status={e.status}>
+                <span dir="ltr">{e.to}</span> · {e.status === "sent" ? "נשלח" : e.status === "failed" ? `נכשל: ${e.error}` : "לא נשלח (אין שרת דואר)"} · {d(e.at)}
+                {e.by ? ` · ${e.by}` : ""}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {canEdit ? (
+        <section className={panel} id="quote-letterhead">
+          <h2 className="mb-2 font-display text-base font-bold">דף לוגו</h2>
+          <ActionForm action={setQuoteLetterheadAction} submit="שמור" primary={false}>
+            <input type="hidden" name="quote_id" value={id} />
+            <label className="flex flex-col gap-1 text-sm text-muted">
+              ההצעה תודפס תחת
+              <select id="letterhead-select" name="letterhead_id" defaultValue={letterheads.find((l) => l.chosen)?.id ?? ""} className={field}>
+                <option value="">ברירת המחדל ({letterheads.find((l) => l.is_default)?.name})</option>
+                {letterheads.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </ActionForm>
+        </section>
+      ) : null}
+
+      {quote.status === "approved" && lastSent ? (
+        <a id="quote-pdf-approved" href={`/quotes/${id}/pdf?v=${lastSent.version}`} className="self-start rounded-lg border border-line px-4 py-2">
+          הורד PDF של ההצעה המאושרת
+        </a>
       ) : null}
 
       {sentDoc && (quote.status !== "draft" || !canEdit) ? <QuoteDocument doc={sentDoc} /> : null}
