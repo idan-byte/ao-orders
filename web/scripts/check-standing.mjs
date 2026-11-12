@@ -3,7 +3,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { saveStanding, setSkip, setPause, setClosedDay, generateStanding, weekdayOf } from "../src/lib/standing-core.ts";
+import { saveStanding, setSkip, setPause, setClosedDay, generateStanding, weekdayOf, getAuto, setAuto, runAuto, recordAutoFailure } from "../src/lib/standing-core.ts";
 import { setAgreedPrice } from "../src/lib/customers-core.ts";
 import { planRows } from "../src/lib/production-core.ts";
 
@@ -94,6 +94,25 @@ const sid2 = await saveStanding(q, null, { ...input, validFrom: "2026-12-30", va
 await generateStanding(q, "2026-12-30", "2027-01-03", user.id);
 const prices = await q("select d.delivery_date::text as d, l.unit_price::float as p from delivery_lines l join deliveries d on d.id = l.delivery_id join orders o on o.id = d.order_id where o.standing_order_id = $1 order by d.delivery_date", [sid2]);
 check("price follows the agreement's start date", prices, [{ d: "2026-12-30", p: 10 }, { d: "2027-01-03", p: 8 }]);
+
+// ---------- automatic generation
+const autoDays = async () => (await q("select sd.day::text from standing_order_days sd where sd.standing_order_id = $1 and sd.generated_order_id is not null and sd.day >= '2027-01-05' order by sd.day", [sid2])).map((r) => r.day);
+check("automation is off until someone switches it on", [(await getAuto(q)).settings, await runAuto(q, "2027-01-06T08:00:00+02:00"), await autoDays()], [{ enabled: false, daysAhead: 7 }, null, []]);
+await refuses("days ahead must be at least 1", () => setAuto(q, { enabled: true, daysAhead: 0 }, user.id), "בין 1 ל-30");
+await refuses("days ahead is capped", () => setAuto(q, { enabled: true, daysAhead: 31 }, user.id), "בין 1 ל-30");
+await setAuto(q, { enabled: true, daysAhead: 7 }, user.id);
+// 2027-01-06 is a Wednesday, a day this standing order delivers on.
+const a1 = await runAuto(q, "2027-01-06T08:00:00+02:00");
+check("automatic run creates tomorrow up to seven days ahead, and never today", [a1.created, await autoDays()], [2, ["2027-01-10", "2027-01-13"]]);
+check("automatic orders have no owner and are approved", await one("select o.owner_id, d.status::text from orders o join deliveries d on d.order_id = o.id where d.delivery_date = '2027-01-13'"), { owner_id: null, status: "approved" });
+check("a second automatic run creates nothing", (await runAuto(q, "2027-01-06T08:15:00+02:00")).created, 0);
+check("the last run is remembered", (({ created, from, to, error }) => ({ created, from, to, error }))((await getAuto(q)).lastRun), { created: 0, from: "2027-01-07", to: "2027-01-13", error: null });
+await runAuto(q, "2027-01-06T22:30:00Z");
+check("the day changes at midnight in Israel, not in UTC", (await getAuto(q)).lastRun.from, "2027-01-08");
+await recordAutoFailure(q, "הדגמת תקלה");
+check("a failed run is shown as failed", (await getAuto(q)).lastRun.error, "הדגמת תקלה");
+await setAuto(q, { enabled: false, daysAhead: 7 }, user.id);
+check("switching it off stops it", await runAuto(q, "2027-01-20T08:00:00+02:00"), null);
 
 // ---------- limits
 await refuses("bad range", () => generateStanding(q, "2026-12-10", "2026-12-01", user.id), "מוקדם");

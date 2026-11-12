@@ -90,6 +90,15 @@ export async function withTransaction<T>(fn: (q: Q) => Promise<T>): Promise<T> {
   });
 }
 
+/** The same, for background work that no request started (the scheduler). */
+export async function systemTransaction<T>(fn: (q: Q) => Promise<T>): Promise<T> {
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    const q = (async (sql: string, params: unknown[] = []) => (await tx.query(sql, params)).rows) as Q;
+    return fn(q);
+  });
+}
+
 export async function query<T extends Row = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
   // Database reads always happen at request time, never while prerendering the static shell.
   await connection();

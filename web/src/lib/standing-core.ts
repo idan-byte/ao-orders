@@ -117,7 +117,7 @@ export type GenerateResult = { created: number; orders: { standingId: string; da
  * range creates nothing new: each (standing order, date) pair is recorded and can be generated only once.
  * Prices are taken at generation time from the customer's agreement, or the base price.
  */
-export async function generateStanding(q: Q, from: string, to: string, userId: string): Promise<GenerateResult> {
+export async function generateStanding(q: Q, from: string, to: string, userId: string | null): Promise<GenerateResult> {
   if (!isDate(from) || !isDate(to)) throw new StandingError("טווח התאריכים אינו תקין.");
   if (to < from) throw new StandingError("תאריך הסיום מוקדם מתאריך ההתחלה.");
   if (Date.parse(to) - Date.parse(from) > 62 * 86400_000) throw new StandingError("אפשר ליצור הזמנות לטווח של עד חודשיים בכל פעם.");
@@ -166,4 +166,53 @@ export async function generateStanding(q: Q, from: string, to: string, userId: s
     await q("insert into audit_log (user_id, action, entity_type, entity_id, after) values ($1, 'generate_standing', 'standing_order', 'range', $2)", [userId, JSON.stringify({ from, to, created: result.created, skipped: result.skipped })]);
   }
   return result;
+}
+
+export type AutoSettings = { enabled: boolean; daysAhead: number };
+export type AutoRun = { at: string; created: number; from: string | null; to: string | null; error: string | null };
+export const AUTO_DEFAULT: AutoSettings = { enabled: false, daysAhead: 7 };
+export const AUTO_MAX_DAYS = 30;
+
+export async function getAuto(q: Q): Promise<{ settings: AutoSettings; lastRun: AutoRun | null }> {
+  const rows = await q<{ key: string; value: unknown }>("select key, value from settings where key in ('standing_auto', 'standing_auto_last')");
+  const settings = rows.find((r) => r.key === "standing_auto")?.value as Partial<AutoSettings> | undefined;
+  const lastRun = rows.find((r) => r.key === "standing_auto_last")?.value as AutoRun | undefined;
+  return { settings: { enabled: settings?.enabled === true, daysAhead: Number.isInteger(settings?.daysAhead) ? settings!.daysAhead! : AUTO_DEFAULT.daysAhead }, lastRun: lastRun ?? null };
+}
+
+export async function setAuto(q: Q, settings: AutoSettings, userId: string): Promise<void> {
+  if (!Number.isInteger(settings.daysAhead) || settings.daysAhead < 1 || settings.daysAhead > AUTO_MAX_DAYS) throw new StandingError(`מספר הימים קדימה צריך להיות בין 1 ל-${AUTO_MAX_DAYS}.`);
+  const value = JSON.stringify({ enabled: settings.enabled === true, daysAhead: settings.daysAhead });
+  const [before] = await q<{ value: unknown }>("select value from settings where key = 'standing_auto'");
+  await q("insert into settings (key, value, updated_by) values ('standing_auto', $1, $2) on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by", [value, userId]);
+  await q("insert into audit_log (user_id, action, entity_type, entity_id, before, after) values ($1, 'standing_auto_settings', 'settings', 'standing_auto', $2, $3)", [userId, before ? JSON.stringify(before.value) : null, value]);
+}
+
+/**
+ * One automatic run: creates the orders from tomorrow up to the configured number of days ahead.
+ * Today is left out on purpose: its production may already be under way, and an order for today should be a person's decision.
+ * Does nothing while the automation is switched off. `now` exists for tests.
+ */
+export async function runAuto(q: Q, now: string | null = null): Promise<GenerateResult | null> {
+  const { settings } = await getAuto(q);
+  if (!settings.enabled) return null;
+  const [d] = await q<{ from: string; to: string }>(
+    "select ((coalesce($1::timestamptz, now()) at time zone 'Asia/Jerusalem')::date + 1)::text as from, ((coalesce($1::timestamptz, now()) at time zone 'Asia/Jerusalem')::date + $2::int)::text as to",
+    [now, settings.daysAhead],
+  );
+  const result = await generateStanding(q, d.from, d.to, null);
+  await saveLastRun(q, { created: result.created, from: d.from, to: d.to, error: null }, now);
+  return result;
+}
+
+export async function recordAutoFailure(q: Q, error: string): Promise<void> {
+  await saveLastRun(q, { created: 0, from: null, to: null, error: error.slice(0, 300) }, null);
+}
+
+async function saveLastRun(q: Q, run: Omit<AutoRun, "at">, now: string | null): Promise<void> {
+  await q(
+    `insert into settings (key, value) values ('standing_auto_last', $1::jsonb || jsonb_build_object('at', coalesce($2::timestamptz, now())))
+     on conflict (key) do update set value = excluded.value, updated_at = now()`,
+    [JSON.stringify(run), now],
+  );
 }
