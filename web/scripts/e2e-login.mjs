@@ -59,7 +59,7 @@ try {
 
   // --- administrator
   const admin = await signIn(ADMIN);
-  check("admin navigation", await navLabels(admin.page), ["דשבורד", "לידים ופניות", "הצעות מחיר", "הזמנות", "קבועות", "לקוחות", "קטלוג", "תוכנית ייצור", "שילוח", "טעינה והפצה", "משתמשים", "דפי לוגו"]);
+  check("admin navigation", await navLabels(admin.page), ["דשבורד", "לידים ופניות", "הצעות מחיר", "הזמנות", "קבועות", "לקוחות", "קטלוג", "תוכנית ייצור", "שילוח", "טעינה והפצה", "משתמשים", "דפי לוגו", "ניהול תקשורת"]);
   check("the menu is grouped: two lists and the settings cog, all closed", [await admin.page.locator("header [data-nav-group]").evaluateAll((l) => l.map((e) => e.getAttribute("data-nav-group"))), await admin.page.locator("header nav a:visible").allTextContents()], [["מכירות", "ייצור", "הגדרות"], ["דשבורד"]]);
   await admin.page.click('header [data-nav-group="מכירות"] button');
   check("a group opens under its name", await admin.page.locator("header nav a:visible").allTextContents(), ["דשבורד", "לידים ופניות", "הצעות מחיר", "הזמנות", "קבועות", "לקוחות", "קטלוג"]);
@@ -67,7 +67,7 @@ try {
   await admin.page.waitForURL(BASE + "/customers");
   check("choosing a screen goes there and closes the list", await admin.page.locator("header nav a:visible").allTextContents(), ["דשבורד"]);
   await admin.page.click('header button[aria-label="הגדרות"]');
-  check("the cog next to sign-out holds the settings screens", await admin.page.locator('header nav[aria-label="הגדרות"] a:visible').allTextContents(), ["משתמשים", "דפי לוגו"]);
+  check("the cog next to sign-out holds the settings screens", await admin.page.locator('header nav[aria-label="הגדרות"] a:visible').allTextContents(), ["משתמשים", "דפי לוגו", "ניהול תקשורת"]);
   await admin.page.keyboard.press("Escape");
   check("Escape closes it", await admin.page.locator('header nav[aria-label="הגדרות"] a:visible').count(), 0);
   check("session cookie is not readable by scripts", await admin.page.evaluate(() => document.cookie.includes("ao_session")), false);

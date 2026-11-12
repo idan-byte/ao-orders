@@ -8,6 +8,7 @@ import { logQuoteEvent } from "@/lib/crm-core";
 import { loadQuoteDoc } from "@/lib/quotes-data";
 import { buildQuoteEmail, MailError, recordEmail } from "@/lib/mail-core";
 import { sendEmail } from "@/lib/mail";
+import { getOutgoing, mailSender } from "@/lib/comm-core";
 import { renderQuotePdf } from "@/lib/quote-pdf";
 
 type State = { error?: string; ok?: string };
@@ -56,7 +57,7 @@ export async function emailQuoteAction(_prev: State, fd: FormData): Promise<Stat
     return { error: "יצירת ה-PDF נכשלה, ולכן המייל לא נשלח." };
   }
   const [{ id: saveAs }] = await query<{ id: string }>("select gen_random_uuid()::text as id");
-  const result = await sendEmail(mail, [{ filename, content: pdf, contentType: "application/pdf" }], saveAs);
+  const result = await sendEmail(mail, [{ filename, content: pdf, contentType: "application/pdf" }], saveAs, mailSender(await getOutgoing(query)));
   await withTransaction(async (q) => {
     await recordEmail(q, { entityType: "quote", entityId: quoteId, to: mail.to, subject: mail.subject, body: mail.text, attachment: filename, status: result.status, error: result.error, userId: user.id });
     if (result.status === "sent") await logQuoteEvent(q, quoteId, `הצעת מחיר ${doc.number} (גרסה ${doc.version}) נשלחה במייל אל ${mail.to}`, user.id);

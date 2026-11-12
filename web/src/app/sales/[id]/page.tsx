@@ -4,6 +4,7 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { LEAD_STAGE_LABEL, type LeadStage } from "@/lib/crm-core";
+import { channelText, type ChannelKind } from "@/lib/comm-core";
 import { ActionForm } from "@/components/action-form";
 import { TaskForm, TaskList, Timeline, type ActivityRow, type TaskRow } from "@/components/crm-blocks";
 import { Loading } from "@/components/loading";
@@ -36,6 +37,7 @@ async function LeadContent({ params }: { params: PageProps<"/sales/[id]">["param
         [id],
       )
     : [];
+  const [channel] = lead ? await query<{ kind: ChannelKind; address: string; label: string | null }>("select c.kind, c.address, c.label from leads l join comm_channels c on c.id = l.channel_id where l.id = $1", [id]) : [];
   if (!lead) {
     return (
       <div className="flex flex-col gap-2">
@@ -76,6 +78,7 @@ async function LeadContent({ params }: { params: PageProps<"/sales/[id]">["param
         <p>{lead.summary}</p>
         <p className="mt-1 text-sm text-muted">
           מקור: {lead.source}
+          {channel ? <span id="lead-channel-text"> · התקבל ב: {channelText(channel)}</span> : null}
           {lead.owner ? ` · אחראי: ${lead.owner}` : ""}
           {lead.contact_phone ? (
             <>

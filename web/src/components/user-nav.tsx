@@ -32,6 +32,7 @@ const GROUPS: { label: string; items: Entry[] }[] = [
 const SETTINGS: Entry[] = [
   { href: "/users", label: "משתמשים", permission: "users.manage" },
   { href: "/letterheads", label: "דפי לוגו", permission: "settings.manage" },
+  { href: "/communication", label: "ניהול תקשורת", permission: "settings.manage" },
 ];
 
 /** Navigation and the signed-in user. Reads the session, so the layout renders it behind <Suspense>. */
