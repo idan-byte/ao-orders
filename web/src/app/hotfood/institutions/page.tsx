@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
@@ -38,9 +39,9 @@ async function Institutions() {
           {list.map((i) => (
             <li key={i.id} data-institution={i.symbol} data-allergy={i.lifeThreatening} className={`${panel} ${i.lifeThreatening ? "border-2 border-[#b42318]" : ""}`}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-lg font-medium">
+                <Link href={`/hotfood/institutions/${i.id}`} className="text-lg font-medium underline">
                   {i.name} <span className="text-base font-normal text-muted">· סמל {i.symbol}</span>
-                </span>
+                </Link>
                 <span className="text-sm text-muted">
                   {[i.kind, i.authority, i.kosher].filter(Boolean).join(" · ")} · {i.groups} מסגרות
                 </span>
