@@ -31,7 +31,7 @@ export type RequestCodeResult =
   | { ok: true; mobile: string; code: string }
   | { ok: false; reason: "invalid_mobile" | "unknown_user" | "too_many" };
 
-export async function requestCode(q: Q, mobileInput: string, now: Date = new Date()): Promise<RequestCodeResult> {
+export async function requestCode(q: Q, mobileInput: string, now: Date = new Date(), maxCodes: number = MAX_CODES_PER_15_MINUTES): Promise<RequestCodeResult> {
   const mobile = normalizeMobile(mobileInput);
   if (!mobile) return { ok: false, reason: "invalid_mobile" };
 
@@ -42,7 +42,7 @@ export async function requestCode(q: Q, mobileInput: string, now: Date = new Dat
     "select count(*)::int as n from login_codes where mobile = $1 and created_at > $2::timestamptz - interval '15 minutes'",
     [mobile, now.toISOString()],
   );
-  if (recent[0].n >= MAX_CODES_PER_15_MINUTES) return { ok: false, reason: "too_many" };
+  if (recent[0].n >= maxCodes) return { ok: false, reason: "too_many" };
 
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   await q(

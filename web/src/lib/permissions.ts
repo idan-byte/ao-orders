@@ -35,6 +35,7 @@ export const PERMISSIONS = [
   "shipping.view",
   "shipping.ship",
   "users.manage",
+  "sync.run",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 

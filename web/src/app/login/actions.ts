@@ -22,7 +22,9 @@ export async function loginAction(prev: LoginState, formData: FormData): Promise
 
   if (intent === "request") {
     const input = String(formData.get("mobile") ?? "");
-    const result = await requestCode(query, input);
+    // The limit can be raised in development (automated tests sign in many times). Production keeps the default.
+    const devLimit = process.env.NODE_ENV === "production" ? undefined : Number(process.env.AO_DEV_MAX_CODES_PER_15_MINUTES) || undefined;
+    const result = await requestCode(query, input, new Date(), devLimit);
     if (!result.ok && result.reason === "invalid_mobile") {
       return { step: "mobile", error: "מספר הנייד אינו תקין. יש להזין מספר בן 10 ספרות שמתחיל ב-05." };
     }
