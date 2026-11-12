@@ -59,8 +59,8 @@ try {
 
   // --- administrator
   const admin = await signIn(ADMIN);
-  check("admin navigation", await navLabels(admin.page), ["דשבורד", "לידים ופניות", "הצעות מחיר", "הזמנות", "קבועות", "לקוחות", "קטלוג", "תוכנית ייצור", "שילוח", "טעינה והפצה", "משתמשים", "דפי לוגו", "ניהול תקשורת"]);
-  check("the menu is grouped: two lists and the settings cog, all closed", [await admin.page.locator("header [data-nav-group]").evaluateAll((l) => l.map((e) => e.getAttribute("data-nav-group"))), await admin.page.locator("header nav a:visible").allTextContents()], [["מכירות", "ייצור", "הגדרות"], ["דשבורד"]]);
+  check("admin navigation", await navLabels(admin.page), ["דשבורד", "לידים ופניות", "הצעות מחיר", "הזמנות", "קבועות", "לקוחות", "קטלוג", "תוכנית ייצור", "שילוח", "טעינה והפצה", "מילגם", "מוסדות", "סוגי מנה", "משתמשים", "דפי לוגו", "ניהול תקשורת"]);
+  check("the menu is grouped: three lists and the settings cog, all closed", [await admin.page.locator("header [data-nav-group]").evaluateAll((l) => l.map((e) => e.getAttribute("data-nav-group"))), await admin.page.locator("header nav a:visible").allTextContents()], [["מכירות", "ייצור", "אוכל חם", "הגדרות"], ["דשבורד"]]);
   await admin.page.click('header [data-nav-group="מכירות"] button');
   check("a group opens under its name", await admin.page.locator("header nav a:visible").allTextContents(), ["דשבורד", "לידים ופניות", "הצעות מחיר", "הזמנות", "קבועות", "לקוחות", "קטלוג"]);
   await admin.page.click('header [data-nav-group="מכירות"] a:has-text("לקוחות")');

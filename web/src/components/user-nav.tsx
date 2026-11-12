@@ -5,7 +5,7 @@ import { NavLink, NavMenu } from "@/components/nav-menu";
 
 type Entry = { href: string; label: string; permission: Permission };
 
-// The top bar: the dashboard, then two groups. A person sees only the screens their role allows;
+// The top bar: the dashboard, then the groups. A person sees only the screens their role allows;
 // a group with a single allowed screen is shown as that screen itself, without a list to open.
 const GROUPS: { label: string; items: Entry[] }[] = [
   {
@@ -25,6 +25,14 @@ const GROUPS: { label: string; items: Entry[] }[] = [
       { href: "/production", label: "תוכנית ייצור", permission: "production.view" },
       { href: "/shipping", label: "שילוח", permission: "shipping.manage" },
       { href: "/drive", label: "טעינה והפצה", permission: "shipping.ship" },
+    ],
+  },
+  {
+    label: "אוכל חם",
+    items: [
+      { href: "/hotfood/milgam", label: "מילגם", permission: "hotfood.view" },
+      { href: "/hotfood/institutions", label: "מוסדות", permission: "hotfood.view" },
+      { href: "/hotfood/meal-types", label: "סוגי מנה", permission: "hotfood.view" },
     ],
   },
 ];
