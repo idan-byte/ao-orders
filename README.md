@@ -38,7 +38,7 @@
 | `web/src/app/orders` | רשימת הזמנות לפי יום, הזמנה חדשה, כרטיס הזמנה, שינוי אספקה | כן, `e2e-orders.mjs` (24 בדיקות בדפדפן) |
 | `db/migrations/0007_production_standing.sql` | תצוגת `production_rows` (כמויות מאוגדות למחלקה וליום), ימים סגורים, שדות להזמנות קבועות | כן |
 | `web/src/lib/production-core.ts` | תוכנית ייצור: איגוד, נעילה, זיהוי שינויים אחרי נעילה, סימון ביצוע, העברת משמרת | כן, `check-production.mjs` (40 בדיקות) |
-| `web/src/app/production` | מסך ייצור למחלקה ולמשמרת (מותאם לטאבלט), ייצוא CSV לאקסל, הדפסה | כן, `e2e-production.mjs` (20 בדיקות בדפדפן) |
+| `web/src/app/production` | מסך ייצור למחלקה ולמשמרת (מותאם לטאבלט), ייצוא לאקסל (.xlsx), PDF (מודפס בשרת בדפדפן headless, `pdf-render.ts`), CSV והדפסה | כן, `e2e-production.mjs` (בדיקות בדפדפן, כולל פתיחת קובץ ה-xlsx ובדיקת ה-PDF) |
 | `web/src/lib/standing-core.ts` | הזמנות קבועות: תבנית שבועית, דילוג על יום, השהיה, ימים סגורים, יצירת הזמנות | כן, `check-standing.mjs` (30 בדיקות) |
 | `web/src/app/standing` | רשימת הזמנות קבועות, עורך שבועי, יצירת הזמנות לטווח תאריכים | כן, `e2e-standing.mjs` (20 בדיקות בדפדפן) |
 | `db/migrations/0008_settings.sql`, `web/src/lib/scheduler.ts`, `web/src/instrumentation.ts` | הגדרות מערכת, ומתזמן רקע שיוצר הזמנות מההזמנות הקבועות (ממחר ועד N ימים קדימה) | כן, `check-standing.mjs`, `e2e-calendar.mjs` |

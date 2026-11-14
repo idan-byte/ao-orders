@@ -2,6 +2,19 @@
 // late-change alert and acknowledgement, the lock guard on order changes, marking done, moving shifts, roles.
 // Needs the dev server on http://localhost:3000 with customers synced. Run from the web folder:  node scripts/e2e-production.mjs
 import { chromium } from "playwright-core";
+import { inflateRawSync } from "node:zlib";
+
+// The text of one file inside a zip (an .xlsx is one): reads the local header of each entry in turn.
+function inflateEntry(zip, wanted) {
+  for (let at = 0; at + 30 <= zip.length && zip.readUInt32LE(at) === 0x04034b50; ) {
+    const method = zip.readUInt16LE(at + 8), size = zip.readUInt32LE(at + 18), nameLen = zip.readUInt16LE(at + 26), extraLen = zip.readUInt16LE(at + 28);
+    const name = zip.subarray(at + 30, at + 30 + nameLen).toString("utf8");
+    const start = at + 30 + nameLen + extraLen;
+    if (name === wanted) return (method === 8 ? inflateRawSync(zip.subarray(start, start + size)) : zip.subarray(start, start + size)).toString("utf8");
+    at = start + size;
+  }
+  return "";
+}
 
 const BASE = process.env.AO_BASE_URL ?? "http://localhost:3000";
 const ADMIN = process.env.AO_BOOTSTRAP_ADMIN_MOBILE ?? "0500000000";
@@ -74,6 +87,17 @@ try {
   check("CSV export: header and one row per product", [csv.status, csv.type.startsWith("text/csv"), csvLines[0].startsWith("תאריך אספקה,מחלקה,משמרת"), csvLines.length, csvLines.some((l) => l.includes(",50002,") && l.includes(",100,"))], [200, true, true, 3, true]);
   const anon = await (await browser.newContext()).newPage();
   check("CSV export needs a login", (await anon.goto(`${BASE}/production/export?date=${DAY}&dept=${deptId}`)).status(), 401);
+
+  // Excel: a real .xlsx (zip) whose sheet holds the same plan; PDF: a real PDF file.
+  const sent = admin.context().request;
+  const xlsx = await sent.get(`${BASE}/production/export?date=${DAY}&dept=${deptId}&format=xlsx`);
+  const xlsxBytes = await xlsx.body();
+  const sheet = inflateEntry(xlsxBytes, "xl/worksheets/sheet1.xml");
+  check("Excel export: a workbook whose sheet has the plan's rows", [xlsx.status(), (xlsx.headers()["content-type"] ?? "").includes("spreadsheetml"), xlsxBytes.subarray(0, 2).toString(), sheet.includes("50002"), sheet.includes("<v>100</v>"), sheet.includes('rightToLeft="1"')], [200, true, "PK", true, true, true]);
+  const pdf = await sent.get(`${BASE}/production/export?date=${DAY}&dept=${deptId}&format=pdf`);
+  const pdfBytes = await pdf.body();
+  check("PDF export: a PDF file", [pdf.status(), (pdf.headers()["content-type"] ?? "").includes("application/pdf"), pdfBytes.subarray(0, 4).toString()], [200, true, "%PDF"]);
+  check("export formats other than these are refused", (await sent.get(`${BASE}/production/export?date=${DAY}&dept=${deptId}&format=doc`)).status(), 400);
 
   // ---------- lock, late change, acknowledge
   await admin.locator('[data-shift="1"] [data-lock]').click();
