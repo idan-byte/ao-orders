@@ -63,8 +63,14 @@ async function Production({ searchParams }: { searchParams: PageProps<"/producti
           תוכנית ייצור · {department.name}
         </h1>
         <div className="no-print flex flex-wrap items-center gap-2">
-          <a id="production-csv" href={`/production/export?date=${date}&dept=${department.id}`} className="rounded-lg border border-line px-4 py-2">
+          <a id="production-xlsx" href={`/production/export?date=${date}&dept=${department.id}&format=xlsx`} className="rounded-lg border border-line px-4 py-2">
             ייצוא לאקסל
+          </a>
+          <a id="production-pdf" href={`/production/export?date=${date}&dept=${department.id}&format=pdf`} className="rounded-lg border border-line px-4 py-2">
+            PDF
+          </a>
+          <a id="production-csv" href={`/production/export?date=${date}&dept=${department.id}`} className="rounded-lg border border-line px-4 py-2">
+            CSV
           </a>
           <PrintButton />
         </div>
