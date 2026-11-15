@@ -7,7 +7,9 @@ import { getInstitution } from "@/lib/hotfood-core";
 import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
+import { listMenus } from "@/lib/menu-core";
 import { linkInstitutionAction } from "../../actions";
+import { institutionMenuAction } from "../../menu-actions";
 
 const panel = "rounded-xl border border-line bg-surface p-4";
 const field = "rounded-lg border border-line bg-surface px-3 py-2 text-foreground";
@@ -39,6 +41,9 @@ async function Institution({ params }: Pick<PageProps<"/hotfood/institutions/[id
     );
   }
   const manage = can(user.role, "hotfood.manage");
+  const menus = await listMenus(query);
+  const [{ menu_id: menuId }] = await query<{ menu_id: number | null }>("select menu_id from institutions where id = $1", [inst.id]);
+  const menu = menus.find((m) => m.id === menuId) ?? null;
   const customers = manage ? await query<{ id: string; name: string }>("select id::text, name from customers where active or id = $1 order by name", [inst.customerId]) : [];
   const addresses = inst.customerId
     ? await query<{ id: string; text: string; route: string | null }>(
@@ -69,6 +74,41 @@ async function Institution({ params }: Pick<PageProps<"/hotfood/institutions/[id
         ) : null}
         <p className="mt-3 text-sm text-muted">
           {inst.groups.length} מסגרות: {inst.groups.map((g) => g.className).join(", ")}
+        </p>
+      </section>
+
+      <section className={panel} id="institution-menu" data-menu={menu?.name ?? ""}>
+        <h2 className="font-display text-lg font-bold">תפריט</h2>
+        <p className="mb-3 mt-1 text-sm text-muted">התפריט המחזורי שהמוסד מקבל. לפיו המטבח יודע מה מבשלים למוסד בכל יום.</p>
+        {manage ? (
+          <ActionForm action={institutionMenuAction} submit="שמור תפריט" primary={false}>
+            <input type="hidden" name="institution_id" value={inst.id} />
+            <label className={label}>
+              תפריט
+              <select name="menu_id" defaultValue={menuId ?? ""} className={`${field} max-w-96`}>
+                <option value="">בלי תפריט</option>
+                {menus
+                  .filter((m) => m.active || m.id === menuId)
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </ActionForm>
+        ) : null}
+        <p className="mt-2">
+          {menu ? (
+            <>
+              תפריט:{" "}
+              <Link href={`/hotfood/menus/${menu.id}`} className="underline">
+                {menu.name}
+              </Link>
+            </>
+          ) : (
+            "עוד לא שויך תפריט."
+          )}
         </p>
       </section>
 

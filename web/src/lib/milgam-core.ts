@@ -1,6 +1,7 @@
 // Hot food: reading a Milgam file (forecast or daily order) and taking it in as institutions, groups and
 // quantities per day. No dependency on Next.js.
 import type { Q } from "./auth-core.ts";
+import { guessMealType } from "./menu-core.ts";
 
 export class MilgamError extends Error {}
 
@@ -181,7 +182,8 @@ export async function importMilgam(q: Q, file: ParsedFile, input: { kind: "forec
     }
     let mealId = mealTypes.get(row.mealType);
     if (mealId === undefined) {
-      [{ id: mealId }] = await q<{ id: number }>("insert into meal_types (name) values ($1) returning id", [row.mealType]);
+      const guess = guessMealType(row.mealType);
+      [{ id: mealId }] = await q<{ id: number }>("insert into meal_types (name, age_group, diet) values ($1, $2, $3) returning id", [row.mealType, guess.ageGroup, guess.diet]);
       mealTypes.set(row.mealType, mealId);
       added.mealTypes.push(row.mealType);
     }
@@ -278,10 +280,10 @@ export async function listInstitutions(q: Q): Promise<InstitutionRow[]> {
   );
 }
 
-export type MealTypeRow = { id: number; name: string; sku: string | null; product: string | null; active: boolean };
+export type MealTypeRow = { id: number; name: string; sku: string | null; product: string | null; active: boolean; ageGroup: string | null; diet: string };
 
 export async function listMealTypes(q: Q): Promise<MealTypeRow[]> {
-  return q<MealTypeRow>(`select mt.id, mt.name, mt.sku, p.name as product, mt.active from meal_types mt left join products p on p.sku = mt.sku order by mt.name`);
+  return q<MealTypeRow>(`select mt.id, mt.name, mt.sku, p.name as product, mt.active, mt.age_group as "ageGroup", mt.diet from meal_types mt left join products p on p.sku = mt.sku order by mt.name`);
 }
 
 /** Maps a meal type to the Hashavshevet item it is billed as. Only an existing item can be chosen. */

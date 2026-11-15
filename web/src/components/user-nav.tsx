@@ -33,6 +33,8 @@ const GROUPS: { label: string; items: Entry[] }[] = [
       { href: "/hotfood/milgam", label: "מילגם", permission: "hotfood.view" },
       { href: "/hotfood/institutions", label: "מוסדות", permission: "hotfood.view" },
       { href: "/hotfood/meal-types", label: "סוגי מנה", permission: "hotfood.view" },
+      { href: "/hotfood/menus", label: "תפריטים", permission: "hotfood.view" },
+      { href: "/hotfood/dishes", label: "מנות ומשקלים", permission: "hotfood.view" },
     ],
   },
 ];
