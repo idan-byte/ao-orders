@@ -57,7 +57,7 @@ try {
   await page.click("button[value=verify]");
   await page.waitForURL((u) => !u.pathname.startsWith("/login"));
   await page.waitForSelector('header [data-nav-group="אוכל חם"]');
-  check("the menu has the hot food group", await page.locator('header [data-nav-group="אוכל חם"] a').allTextContents(), ["מילגם", "מוסדות", "סוגי מנה"]);
+  check("the menu has the hot food group", await page.locator('header [data-nav-group="אוכל חם"] a').allTextContents(), ["מילגם", "מוסדות", "סוגי מנה", "תפריטים", "מנות ומשקלים"]);
 
   // ---------- a file that is not a Milgam file
   const notExcel = await upload("forecast", { name: "x.xlsx", mimeType: "text/plain", buffer: Buffer.from("סמל מוסד,כתה") }, false);
@@ -102,17 +102,17 @@ try {
   // ---------- meal types
   await go("/hotfood/meal-types", "#meal-types-summary");
   const meal = page.locator(`[data-meal-type="${MEAL_A}"]:visible`);
-  const options = await meal.locator("select option").evaluateAll((l) => l.map((o) => o.value).filter(Boolean));
+  const options = await meal.locator("select[name=sku] option").evaluateAll((l) => l.map((o) => o.value).filter(Boolean));
   if (options.length === 0) console.log("note: the catalogue has no hot food items (sort group 600), so the mapping itself was not exercised");
   else {
-    await meal.locator("select").selectOption(options[0]);
-    await meal.locator("button").click();
+    await meal.locator("select[name=sku]").selectOption(options[0]);
+    await meal.locator("form:has(select[name=sku]) button").click();
     await page.waitForSelector(`[data-meal-type="${MEAL_A}"][data-sku="${options[0]}"]`);
     await go(`/hotfood/milgam?day=${D1}`, "#milgam-day");
     check("a mapped meal type shows its catalogue item on the day", (await page.locator(`#milgam-day [data-meal="${MEAL_A}"] td`).nth(1).textContent()).trim(), options[0]);
     await go("/hotfood/meal-types", "#meal-types-summary");
-    await page.locator(`[data-meal-type="${MEAL_A}"]:visible select`).selectOption("");
-    await page.locator(`[data-meal-type="${MEAL_A}"]:visible button`).click();
+    await page.locator(`[data-meal-type="${MEAL_A}"]:visible select[name=sku]`).selectOption("");
+    await page.locator(`[data-meal-type="${MEAL_A}"]:visible form:has(select[name=sku]) button`).click();
     await page.waitForSelector(`[data-meal-type="${MEAL_A}"][data-sku=""]`);
     check("the mapping is cleared again, so the test leaves it as it found it", await page.locator(`[data-meal-type="${MEAL_A}"]:visible`).getAttribute("data-sku"), "");
   }

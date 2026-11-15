@@ -57,8 +57,8 @@ async function setSku(meal, sku) {
   await go("/hotfood/meal-types", "#meal-types-summary");
   const li = page.locator(`[data-meal-type="${meal}"]:visible`);
   if ((await li.getAttribute("data-sku")) === sku) return;
-  await li.locator("select").selectOption(sku);
-  await li.locator("button").click();
+  await li.locator("select[name=sku]").selectOption(sku);
+  await li.locator("form:has(select[name=sku]) button").click();
   await page.waitForSelector(`[data-meal-type="${meal}"][data-sku="${sku}"]`);
 }
 const dayItem = () => page.locator(`[data-day-institution="${SYMBOL}"]:visible`);

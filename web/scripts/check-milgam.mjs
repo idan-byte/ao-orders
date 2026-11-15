@@ -112,7 +112,7 @@ check("every load is recorded with who, what and how much was held", [imports.le
 await q("insert into products (sku, name, base_price, sort_group) values ('60001', 'חמגשית מילגם', 20, 600)");
 const meal = (await listMealTypes(q)).find((m) => m.name === "חמגשית א-ב");
 await setMealTypeSku(q, meal.id, "60001", user);
-check("a meal type is mapped to a catalogue item", (await listMealTypes(q)).find((m) => m.name === "חמגשית א-ב"), { id: meal.id, name: "חמגשית א-ב", sku: "60001", product: "חמגשית מילגם", active: true });
+check("a meal type is mapped to a catalogue item", (await listMealTypes(q)).find((m) => m.name === "חמגשית א-ב"), { id: meal.id, name: "חמגשית א-ב", sku: "60001", product: "חמגשית מילגם", active: true, ageGroup: "ab", diet: "regular" });
 let threw = "";
 try { await setMealTypeSku(q, meal.id, "99999", user); } catch (e) { threw = e.message; }
 check("an item that is not in the catalogue cannot be chosen", threw, "המק״ט לא קיים בקטלוג.");
