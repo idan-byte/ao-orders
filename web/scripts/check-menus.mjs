@@ -9,6 +9,7 @@ import { importMilgam } from "../src/lib/milgam-core.ts";
 import { buildMenu, toLines, sundayOf } from "../src/lib/menu-parse-core.ts";
 import { createMenu, updateMenu, listMenus, getMenu, setInstitutionMenu, setMenuDay, setWeekStarts, extendCycle, menuWeeks, saveParsedMenu, menuDayReport, guessMealType, setMealTypeGroup } from "../src/lib/menu-core.ts";
 import { listDishes, getDish, createDish, updateDish } from "../src/lib/dish-core.ts";
+import { cellItems, menuPhrases, setPhraseDish, dayCooking } from "../src/lib/menu-cook-core.ts";
 
 const db = new PGlite();
 const dir = path.join(process.cwd(), "..", "db", "migrations");
@@ -167,6 +168,40 @@ await refuses("a weight must be a number", async () => updateDish(q, steak.id, i
 await refuses("two dishes cannot share a code", async () => createDish(q, input(steak, { name: "אחרת" }), user), "הקוד");
 const added = await createDish(q, { code: "", category: "main", name: "  מנה   חדשה ", weightGan: "0.08", weightAb: "0.1", weightGv: "0.12", weightHigh: "0.14", kiloBoxWeight: "", rawRatio: "100", routineBreaker: true, active: true }, user);
 check("a dish is added without a code", [(await getDish(q, added)).name, (await getDish(q, added)).code, (await listDishes(q, { breakerOnly: true, search: "מנה חדשה" })).total], ["מנה חדשה", null, 1]);
+
+// ---------- from the menu to kilograms
+check("a cell is read as items: a heading starts an item for a population, a plain line continues the one above", cellItems("שניצלון הודו\nגוננים: המבורגר /קבב\nגנים בלבד: מרק ירקות עם 50%\nגרגרי חומוס\nבתי ספר: פיתה."), [{ scope: "all", label: null, phrase: "שניצלון הודו" }, { scope: "other", label: "גוננים", phrase: "המבורגר /קבב" }, { scope: "gan", label: "גנים בלבד", phrase: "מרק ירקות עם 50% גרגרי חומוס" }, { scope: "school", label: "בתי ספר", phrase: "פיתה" }]);
+const D2 = "2027-03-09"; // a Tuesday; its week starts on 2027-03-07
+const dish = (category, name, w, rawRatio = "") => createDish(q, { code: "", category, name, weightGan: w[0], weightAb: w[1], weightGv: w[2], weightHigh: w[3], kiloBoxWeight: "", rawRatio, routineBreaker: false, active: true }, user);
+await dish("main", "שניצל בדיקה", ["0.08", "0.1", "0.12", "0.14"], "120");
+await dish("main", "קציצות בדיקה", ["0.09", "", "", ""]);
+await dish("grain", "אורז בדיקה", ["0.1", "0.12", "0.15", "0.18"], "40");
+const bulgur = await dish("grain", "בורגול בדיקה", ["0.05", "0.05", "0.05", "0.05"]);
+await dish("vegetarian", "טופו בדיקה", ["0.08", "0.1", "0.12", "0.12"]);
+await dish("fruit", "תפוח בדיקה", ["", "", "", ""]);
+const scale = await createMenu(q, "שקילה", user);
+await setWeekStarts(q, scale, 1, ["2027-03-07"], user);
+await setMenuDay(q, scale, 1, 2, null, [{ category: "main", text: "שניצל בדיקה\nגנים: קציצות בדיקה" }, { category: "grain", text: "אורז בדיקה" }, { category: "hot_side", text: "גוננים: אפונה בדיקה" }, { category: "vegetarian", text: "טופו בדיקה" }, { category: "vegetable", text: "ירק לא מוכר" }, { category: "fruit", text: "תפוח בדיקה" }], user);
+const row2 = (className, mealType, qty) => ({ ...row("444", "בית ספר שקילה", className, mealType, qty), quantities: { [D2]: qty } });
+await importMilgam(q, { days: [D2], rows: [row2("גן", "תפזורת חובה", 10), row2("א1", "חמגשית א-ב", 20), row2("א1", "חמגשית צמחוני א-ב", 4), row2("ד1", "חמגשית ג-ו", 30), row2("ד1", "ללא אלרגניים", 2), row2("ד1", "משהו אחר", 5)], problems: [], sheetRows: 6 }, { kind: "forecast", fileName: "צפי שקילה", userId: user, addNew: true });
+await setInstitutionMenu(q, (await one("select id from institutions where symbol = '444'")).id, scale, user);
+const cook = await dayCooking(q, D2);
+const line = (phrase) => { const l = cook.menus[0].lines.find((x) => x.phrase === phrase); return [l.scope, l.dish, l.portions, l.kg, l.rawKg, l.unweighed]; };
+check("the main dish is weighed by age group; the item written for the kindergartens takes them out of it", [line("שניצל בדיקה"), line("קציצות בדיקה")], [["all", "שניצל בדיקה", 55, 5.6, 6.72, 5], ["gan", "קציצות בדיקה", 10, 0.9, null, 0]]);
+check("the grain feeds the regular and the vegetarian plates", line("אורז בדיקה"), ["all", "אורז בדיקה", 69, 8.38, 3.352, 5]);
+check("the vegetarian dish feeds only the vegetarian portions", line("טופו בדיקה"), ["all", "טופו בדיקה", 4, 0.4, null, 0]);
+check("an item for a population the system cannot count is shown and not weighed", line("אפונה בדיקה"), ["other", null, 0, null, null, 0]);
+check("a dish without weights is counted in portions only", line("תפוח בדיקה"), ["all", "תפוח בדיקה", 71, null, null, 71]);
+check("a phrase with no dish is counted as not tied", [line("ירק לא מוכר"), cook.untied], [["all", null, 71, null, null, 0], 1]);
+check("the day's totals per dish, over all menus", cook.totals.map((t) => [t.dish, t.portions, t.kg, t.rawKg]), [["קציצות בדיקה", 10, 0.9, null], ["שניצל בדיקה", 50, 5.6, 6.72], ["אורז בדיקה", 64, 8.38, 3.352], ["טופו בדיקה", 4, 0.4, null]]);
+const phrases = await menuPhrases(q, scale);
+check("a menu's phrases, each with the dish found by its name", phrases.map((p) => [p.category, p.phrase, p.dish, p.how, p.hasWeights]), [["main", "קציצות בדיקה", "קציצות בדיקה", "name", true], ["main", "שניצל בדיקה", "שניצל בדיקה", "name", true], ["grain", "אורז בדיקה", "אורז בדיקה", "name", true], ["hot_side", "אפונה בדיקה", null, null, false], ["vegetarian", "טופו בדיקה", "טופו בדיקה", "name", true], ["vegetable", "ירק לא מוכר", null, null, false], ["fruit", "תפוח בדיקה", "תפוח בדיקה", "name", false]]);
+await setPhraseDish(q, "grain", "אורז בדיקה", bulgur, user);
+check("a phrase tied by a person is weighed by the dish they chose", [(await menuPhrases(q, scale)).find((p) => p.phrase === "אורז בדיקה").how, (await dayCooking(q, D2)).menus[0].lines.find((x) => x.phrase === "אורז בדיקה").kg], ["tied", 3.2]);
+await refuses("a phrase cannot be tied to a dish of another category", () => setPhraseDish(q, "main", "שניצל בדיקה", bulgur, user), "קטגוריה אחרת");
+await refuses("bread is not weighed", () => setPhraseDish(q, "bread", "פיתה", bulgur, user), "אינה נשקלת");
+await setPhraseDish(q, "grain", "אורז בדיקה", null, user);
+check("removing the tie goes back to the dish found by name", (await dayCooking(q, D2)).menus[0].lines.find((x) => x.phrase === "אורז בדיקה").kg, 8.38);
 
 console.log(failed === 0 ? "MENUS CHECK PASSED" : `MENUS CHECK FAILED (${failed})`);
 process.exit(failed === 0 ? 0 : 1);

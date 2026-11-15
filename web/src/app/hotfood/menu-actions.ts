@@ -8,9 +8,10 @@ import { buildMenu, CELL_CATEGORIES, MenuParseError } from "@/lib/menu-parse-cor
 import { PdfReadError, readPdfPages } from "@/lib/menu-pdf";
 import { clearUploadWarnings, createMenu, extendCycle, MenuError, saveParsedMenu, setInstitutionMenu, setMealTypeGroup, setMenuDay, setWeekStarts, updateMenu } from "@/lib/menu-core";
 import { createDish, DishError, updateDish, type DishInput } from "@/lib/dish-core";
+import { CookError, setPhraseDish } from "@/lib/menu-cook-core";
 
 export type MenuState = { error?: string; ok?: string };
-const known = (e: unknown) => e instanceof MenuError || e instanceof MenuParseError || e instanceof PdfReadError || e instanceof DishError;
+const known = (e: unknown) => e instanceof MenuError || e instanceof MenuParseError || e instanceof PdfReadError || e instanceof DishError || e instanceof CookError;
 function message(where: string, e: unknown): string {
   if (known(e)) return (e as Error).message;
   console.error(`[${where}]`, e);
@@ -177,5 +178,20 @@ export async function dishAction(_prev: MenuState, fd: FormData): Promise<MenuSt
     return { ok: changed ? "נשמר." : "לא היה מה לשנות." };
   } catch (e) {
     return { error: message("dish", e) };
+  }
+}
+
+/** Ties what a menu cell says to a dish of the dish table, for every menu. An empty choice removes the tie. */
+export async function phraseDishAction(_prev: MenuState, fd: FormData): Promise<MenuState> {
+  const user = await assertPermission("hotfood.manage");
+  const raw = text(fd, "dish_id");
+  const dishId = id(fd, "dish_id");
+  if (raw !== "" && dishId === null) return { error: "המנה לא נמצאה." };
+  try {
+    await withTransaction((q) => setPhraseDish(q, text(fd, "category"), text(fd, "phrase"), dishId, user.id));
+    refresh();
+    return { ok: "נשמר." };
+  } catch (e) {
+    return { error: message("menu phrase", e) };
   }
 }
