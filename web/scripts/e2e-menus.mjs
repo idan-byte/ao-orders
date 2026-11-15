@@ -1,7 +1,8 @@
 // End-to-end check in headless Edge of hot food menus: a menu document (PDF) is uploaded and becomes a cyclic menu,
 // a day of the cycle is edited, the weeks get their dates and the cycle is continued, a dish of the dish table is
 // added and its weight changed, meal types get an age group and a diet, an institution follows the menu, and the
-// kitchen's day report shows the day's plates with the portions by age group.
+// kitchen's day report shows the day's plates with the portions by age group, and the kilograms to cook once the
+// menu's phrases are tied to dishes of the dish table.
 // The test keeps one institution ("מוסד בדיקה תפריט"), three meal types ("מנת בדיקה תפריט ...") and one dish
 // ("מנת בדיקה תפריט"); every run adds one menu and switches it off at the end. Its days are in 1900-1949.
 // Needs the dev server on http://localhost:3000. Run from the web folder:  node scripts/e2e-menus.mjs
@@ -63,7 +64,7 @@ const rowsOf = (main) => [
   ["מנה עיקרית", "בולונז", "שווארמה", `${main}<br>גנים: קציצות`],
   ['מק"ט', "", "333167", "45021"],
   ["דגנים", "פסטה", "תפוח אדמה", "אורז 30% מלא"],
-  ["תוספת חמה", "תירס", "-", "אפונה ברוטב"],
+  ["תוספת חמה", "תירס", "-", "אפונה בדיקה"],
   ["מנה לצמחונים", "כדורי סויה", "שניצל תירס", "תבשיל עדשים"],
   ['מק"ט', "12573078", "", ""],
   ["ללא אלרגנים", "בולונז, פסטה ותירס", "שווארמה, אורז", "שניצל, פסטה, תירס"],
@@ -203,12 +204,42 @@ try {
   await go(`/hotfood/menus/day?day=${DAY}`, "#day-summary");
   const section = `[data-day-menu="${MENU}"]`;
   check("the day's menu shows its week of the cycle", (await text(`${section} [data-day-menu-summary]`)), "שבוע 1 במחזור, יום שלישי · 1 מוסדות · 40 מנות");
-  check("a regular plate is the main dish, the grain and the hot side", await text(`${section} [data-plate="regular"] td`), "מנה עיקרית: שניצל גנים: קציצות · מק״ט 45021 דגנים: אורז 30% מלא תוספת חמה: אפונה ברוטב");
-  check("a vegetarian plate swaps only the main dish", await text(`${section} [data-plate="vegetarian"] td`), "מנה לצמחונים: תבשיל עדשים דגנים: אורז 30% מלא תוספת חמה: אפונה ברוטב");
+  check("a regular plate is the main dish, the grain and the hot side", await text(`${section} [data-plate="regular"] td`), "מנה עיקרית: שניצל גנים: קציצות · מק״ט 45021 דגנים: אורז 30% מלא תוספת חמה: אפונה בדיקה");
+  check("a vegetarian plate swaps only the main dish", await text(`${section} [data-plate="vegetarian"] td`), "מנה לצמחונים: תבשיל עדשים דגנים: אורז 30% מלא תוספת חמה: אפונה בדיקה");
   check("an allergen-free meal is a whole different meal", await text(`${section} [data-plate="allergen_free"] td`), "ללא אלרגנים: שניצל, פסטה, תירס · מק״ט Kk054");
   check("portions by age group", [await text(`${section} [data-plate="regular"] [data-age="gv"]`), await text(`${section} [data-plate="vegetarian"] [data-age="gv"]`), await text(`${section} [data-plate="regular"] [data-plate-total]`), await text(`${section} [data-plate="allergen_free"] [data-plate-total]`)], ["35", "3", "35", "2"]);
   check("a meal type without an age group is pointed out", (await text(section)).includes("יש סוגי מנה בלי קבוצת גיל"), true);
   check("what goes with every plate", await text(`${section} [data-extras]`), "ירק טרי: גנים: ירקות ארוזים בתי ספר: 20% גזרונים פרי טרי: אגס לחם: לחם עם סמל ירוק");
+
+  // ---------- from the menu to kilograms
+  await go("/hotfood/dishes?q=13589", "#dish-list");
+  const perPortion = Number(await text('[data-dish="13589"] [data-w="gv"]'));
+  const kgText = (n) => `${new Intl.NumberFormat("he-IL", { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(n)} ק״ג`;
+  await go(`/hotfood/menus/day?day=${DAY}`, "#day-summary");
+  check("a phrase that is exactly a dish's name is weighed by it: portions times the weight of the age group", [await text(`${section} [data-cook-line="שניצל"] td:nth-child(2)`), await text(`${section} [data-cook-line="שניצל"] td:nth-child(3)`), (await text(`${section} [data-cook-line="שניצל"] [data-kg]`)).startsWith(kgText(35 * perPortion))], ["שניצל (13589)", "35", true]);
+  check("the item written for the kindergartens is counted apart", [await text(`${section} [data-cook-line="קציצות"] td:nth-child(1)`), await text(`${section} [data-cook-line="קציצות"] td:nth-child(3)`)], ["מנה עיקרית: גנים: קציצות", "0"]);
+  check("a phrase without a dish is pointed out", await text(`${section} [data-cook-line="אפונה בדיקה"] td:nth-child(2)`), "לא קושר");
+  check("the day's summary has the dish", (await text('#cook-totals [data-total-dish="שניצל"] [data-kg]')) !== "", true);
+
+  await page.goto(BASE + menuPath);
+  await page.waitForSelector("#phrases-link");
+  await page.click("#phrases-link");
+  await page.waitForSelector("#phrase-list");
+  const phrase = page.locator('[data-phrase="אפונה בדיקה"][data-category="hot_side"]:visible');
+  check("the menu's phrases are listed, with what was found by name", [await page.locator('[data-phrase="שניצל"][data-category="main"]:visible').getAttribute("data-how"), await phrase.getAttribute("data-how")], ["name", ""]);
+  const tiedTo = clean(await phrase.locator("select option").nth(1).textContent()).split(" · ")[0];
+  await phrase.locator("select").selectOption({ index: 1 });
+  check("a phrase is tied to a dish", await submit(phrase.locator("form")), "נשמר.");
+  await page.waitForSelector('[data-phrase="אפונה בדיקה"][data-how="tied"]');
+  await go(`/hotfood/menus/day?day=${DAY}`, "#day-summary");
+  check("the tied phrase is now weighed by its dish", (await text(`${section} [data-cook-line="אפונה בדיקה"] td:nth-child(2)`)).startsWith(tiedTo), true);
+  await page.goto(BASE + menuPath + "/phrases");
+  await page.waitForSelector("#phrase-list");
+  await phrase.locator("select").selectOption("");
+  await submit(phrase.locator("form"));
+  await page.waitForSelector('[data-phrase="אפונה בדיקה"][data-how=""]');
+  check("the tie is removed again, so the test leaves the table as it found it", await phrase.getAttribute("data-how"), "");
+
 
   // ---------- tidy up: the institution leaves the menu and the menu is switched off
   await page.goto(BASE + menuPath);

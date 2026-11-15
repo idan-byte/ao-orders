@@ -59,9 +59,14 @@ async function Menu({ params, searchParams }: Pick<PageProps<"/hotfood/menus/[id
         <h1 className="font-display text-2xl font-bold">
           {menu.name} {menu.active ? null : <span className="text-lg font-normal text-muted">· מושבת</span>}
         </h1>
-        <Link href="/hotfood/menus" className={small}>
-          כל התפריטים
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/hotfood/menus/${menu.id}/phrases`} className={small} id="phrases-link">
+            קישור למנות ומשקלים
+          </Link>
+          <Link href="/hotfood/menus" className={small}>
+            כל התפריטים
+          </Link>
+        </div>
       </div>
       <p className="text-muted" id="menu-summary">
         מחזור של {menu.weeks} שבועות
