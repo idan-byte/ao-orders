@@ -12,6 +12,7 @@ const GROUPS: { label: string; items: Entry[] }[] = [
     label: "מכירות",
     items: [
       { href: "/sales", label: "לידים ופניות", permission: "leads.view" },
+      { href: "/inbox", label: "דואר נכנס", permission: "leads.view" },
       { href: "/quotes", label: "הצעות מחיר", permission: "quotes.view" },
       { href: "/orders", label: "הזמנות", permission: "orders.view" },
       { href: "/standing", label: "קבועות", permission: "orders.view" },

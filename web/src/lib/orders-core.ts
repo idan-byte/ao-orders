@@ -68,7 +68,7 @@ async function checkSkus(q: Q, skus: string[]) {
  * Opens an order entered by an employee. It is approved at once (the employee is the approval) and gets one
  * delivery per delivery date. In the form, "customer notes" are the shipping notes and "internal notes" are for production.
  */
-export async function createOrder(q: Q, customerId: string, userId: string, d: DraftInput): Promise<{ orderId: string; number: number; deliveries: number }> {
+export async function createOrder(q: Q, customerId: string, userId: string, d: DraftInput, source: "manual" | "email" = "manual"): Promise<{ orderId: string; number: number; deliveries: number }> {
   const problem = validateDraft(d);
   if (problem) throw new OrderError(problem);
   if (d.lines.length === 0) throw new OrderError("אי אפשר לפתוח הזמנה בלי פריטים.");
@@ -80,8 +80,8 @@ export async function createOrder(q: Q, customerId: string, userId: string, d: D
   const snapshot = await addressSnapshot(q, d.addressId, customerId);
 
   const [order] = await q<{ id: string; number: number }>(
-    "insert into orders (customer_id, source, owner_id, discount_pct, vat_rate, delivery_fee) values ($1, 'manual', $2, $3, $4, $5) returning id::text, number",
-    [customerId, userId, d.discountPct, VAT_RATE, d.deliveryFee],
+    "insert into orders (customer_id, source, owner_id, discount_pct, vat_rate, delivery_fee) values ($1, $6::order_source, $2, $3, $4, $5) returning id::text, number",
+    [customerId, userId, d.discountPct, VAT_RATE, d.deliveryFee, source],
   );
   const byDate = new Map<string, typeof d.lines>();
   for (const l of d.lines) {

@@ -1,6 +1,7 @@
 import { systemTransaction } from "@/lib/db";
 import { runAutoLock } from "@/lib/production-core";
 import { recordAutoFailure, runAuto } from "@/lib/standing-core";
+import { syncInbound } from "@/lib/inbound";
 
 // Background work that runs inside the server process, with no user behind it.
 // Today: creating orders from standing orders, then locking production plans whose lock time has passed. Each run is harmless to repeat, so a missed or doubled tick does no damage.
@@ -24,6 +25,12 @@ async function tick() {
     await systemTransaction((q) => runAutoLock(q), (locked) => locked.length > 0);
   } catch (e) {
     console.error("[scheduler] production lock:", e);
+  }
+  // Incoming mail: does nothing until reading the mailbox and the AI sorting are both switched on.
+  try {
+    await syncInbound();
+  } catch (e) {
+    console.error("[scheduler] incoming mail:", e instanceof Error ? e.name : "error");
   }
 }
 
