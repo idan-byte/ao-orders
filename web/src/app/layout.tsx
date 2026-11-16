@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Heebo, Rubik } from "next/font/google";
 import { Suspense } from "react";
 import { UserNav } from "@/components/user-nav";
+import { TestBanner } from "@/components/test-banner";
 import "./globals.css";
 
 const heebo = Heebo({ variable: "--font-heebo", subsets: ["hebrew", "latin"] });
@@ -16,6 +17,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="he" dir="rtl" className={`${heebo.variable} ${rubik.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans">
+        <Suspense fallback={null}>
+          <TestBanner />
+        </Suspense>
         <header className="sticky top-0 z-10 border-b border-line bg-surface">
           <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-4 py-2.5">
             <div className="font-display text-lg font-bold">A&amp;O</div>

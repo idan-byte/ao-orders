@@ -59,11 +59,11 @@ export async function emailQuoteAction(_prev: State, fd: FormData): Promise<Stat
   const [{ id: saveAs }] = await query<{ id: string }>("select gen_random_uuid()::text as id");
   const result = await sendEmail(mail, [{ filename, content: pdf, contentType: "application/pdf" }], saveAs, mailSender(await getOutgoing(query)));
   await withTransaction(async (q) => {
-    await recordEmail(q, { entityType: "quote", entityId: quoteId, to: mail.to, subject: mail.subject, body: mail.text, attachment: filename, status: result.status, error: result.error, userId: user.id });
-    if (result.status === "sent") await logQuoteEvent(q, quoteId, `הצעת מחיר ${doc.number} (גרסה ${doc.version}) נשלחה במייל אל ${mail.to}`, user.id);
+    await recordEmail(q, { entityType: "quote", entityId: quoteId, to: result.deliveredTo ?? mail.to, subject: result.deliveredTo ? `[טסט] ${mail.subject}` : mail.subject, body: mail.text, attachment: filename, status: result.status, error: result.error, userId: user.id });
+    if (result.status === "sent") await logQuoteEvent(q, quoteId, `הצעת מחיר ${doc.number} (גרסה ${doc.version}) נשלחה במייל אל ${result.deliveredTo ?? mail.to}${result.deliveredTo ? " (מצב טסט: במקום הלקוח)" : ""}`, user.id);
   });
   refresh();
   if (result.status === "failed") return { error: `המייל לא נשלח: ${result.error}` };
   if (result.status === "not_sent_dev") return { ok: "לא הוגדר שרת דואר, ולכן המייל לא נשלח. ההודעה וה-PDF נשמרו בתיקיית outbox לבדיקה." };
-  return { ok: `המייל נשלח אל ${mail.to}.` };
+  return { ok: result.deliveredTo ? `מצב טסט: המייל נשלח לכתובת הבדיקה ${result.deliveredTo} במקום ${mail.to}.` : `המייל נשלח אל ${mail.to}.` };
 }

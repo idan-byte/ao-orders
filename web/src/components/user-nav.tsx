@@ -44,6 +44,7 @@ const SETTINGS: Entry[] = [
   { href: "/users", label: "משתמשים", permission: "users.manage" },
   { href: "/letterheads", label: "דפי לוגו", permission: "settings.manage" },
   { href: "/communication", label: "ניהול תקשורת", permission: "settings.manage" },
+  { href: "/test-environment", label: "סביבת טסט", permission: "settings.manage" },
 ];
 
 /** Navigation and the signed-in user. Reads the session, so the layout renders it behind <Suspense>. */
