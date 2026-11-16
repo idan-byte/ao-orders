@@ -68,6 +68,23 @@ export async function importCatalog(q: Q, rows: HashProduct[]): Promise<{ create
   return { created, updated };
 }
 
+export class CustomerError extends Error {}
+
+/**
+ * A customer typed in here, before it exists in Hashavshevet. Only the name is needed now; the rest can follow.
+ * It is marked as waiting for Hashavshevet, and it has no account key until it is entered there.
+ */
+export async function createLocalCustomer(q: Q, input: { name: string; taxId: string | null; phone: string | null; email: string | null }): Promise<{ customerId: string }> {
+  const name = input.name.replace(/\s+/g, " ").trim();
+  if (name.length < 2) throw new CustomerError("יש להזין שם לקוח.");
+  if (input.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email)) throw new CustomerError("כתובת המייל אינה תקינה.");
+  const [c] = await q<{ id: string }>("insert into customers (name, tax_id, pending_hash_sync) values ($1, $2, true) returning id::text", [name, input.taxId?.trim() || null]);
+  if (input.phone || input.email) {
+    await q("insert into customer_contacts (customer_id, full_name, phone, email) values ($1, $2, $3, $4)", [c.id, name, input.phone?.trim() || null, input.email?.trim() || null]);
+  }
+  return { customerId: c.id };
+}
+
 /**
  * Customers are matched by their Hashavshevet account key. Fields that mirror Hashavshevet are refreshed on
  * every sync; data entered in this system (delivery addresses, contacts, notes, billing policy) is never touched.

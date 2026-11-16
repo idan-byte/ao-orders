@@ -7,6 +7,7 @@ import { QUOTE_STATUS } from "@/lib/quotes-data";
 import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
+import { NewCustomerPopup } from "@/components/new-customer-popup";
 import { createQuoteAction } from "./actions";
 
 type Row = { id: string; number: number; status: string; customer: string; version: number; total: number; valid_until: string | null; expired: boolean; owner: string | null; created_at: string };
@@ -59,23 +60,27 @@ async function QuotesContent({ searchParams }: { searchParams: PageProps<"/quote
       {can(user.role, "quotes.edit") ? (
         <section className="rounded-xl border border-line bg-surface p-4">
           <h2 className="mb-3 font-display text-base font-bold">הצעה חדשה</h2>
-          {customers.length === 0 ? (
-            <p className="text-muted">אין עדיין לקוחות. סנכרון מחשבשבת במסך הלקוחות יטען אותם.</p>
-          ) : (
-            <ActionForm action={createQuoteAction} submit="פתח הצעה" pendingLabel="פותח…">
-              <label className="flex flex-col gap-1 text-sm text-muted">
-                לקוח
-                <select id="new-quote-customer" name="customer_id" required defaultValue={preselect} className="max-w-xs rounded-lg border border-line bg-surface px-3 py-2 text-foreground">
-                  <option value="">בחירה</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </ActionForm>
-          )}
+          <div className="flex flex-wrap items-end gap-3">
+            {customers.length === 0 ? (
+              <p className="text-muted">אין עדיין לקוחות. סנכרון מחשבשבת במסך הלקוחות יטען אותם, או מוסיפים לקוח חדש.</p>
+            ) : (
+              // The key makes the form take the customer that was just added as its default.
+              <ActionForm key={preselect} action={createQuoteAction} submit="פתח הצעה" pendingLabel="פותח…">
+                <label className="flex flex-col gap-1 text-sm text-muted">
+                  לקוח
+                  <select id="new-quote-customer" name="customer_id" required defaultValue={preselect} className="max-w-xs rounded-lg border border-line bg-surface px-3 py-2 text-foreground">
+                    <option value="">בחירה</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </ActionForm>
+            )}
+            <NewCustomerPopup />
+          </div>
         </section>
       ) : null}
 

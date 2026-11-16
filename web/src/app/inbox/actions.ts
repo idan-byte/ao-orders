@@ -39,7 +39,9 @@ export async function approveAction(_prev: InboxState, fd: FormData): Promise<In
     if (fd.get(`use_${i}`) !== "on") continue;
     const sku = String(fd.get(`other_${i}`) ?? "").trim() || String(fd.get(`sku_${i}`) ?? "").trim();
     if (!sku) return { error: `שורה ${i + 1} מסומנת אבל לא נבחר לה מוצר. בוחרים מוצר, או מורידים את הסימון.` };
-    lines.push({ sku, quantity: Number(String(fd.get(`qty_${i}`) ?? "").replace(",", ".")) });
+    const priceRaw = String(fd.get(`price_${i}`) ?? "").trim();
+    const price = priceRaw === "" ? null : Number(priceRaw.replace(",", "."));
+    lines.push({ sku, quantity: Number(String(fd.get(`qty_${i}`) ?? "").replace(",", ".")), price });
   }
   let where: string;
   try {

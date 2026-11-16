@@ -33,7 +33,7 @@ async function HomeContent() {
 
   const [s] = await query<{
     today: string; open_leads: number; tasks_due: number; tasks_overdue: number; quotes_waiting: number; quotes_waiting_sum: number; quotes_expired: number;
-    quotes_draft: number; deliveries_week: number; orders_sum_week: number; pending_prices: number; customers: number;
+    quotes_draft: number; deliveries_week: number; orders_sum_week: number; pending_prices: number; customers: number; inbox_waiting: number;
   }>(`
     with t as (select (now() at time zone 'Asia/Jerusalem')::date as today)
     select t.today::text,
@@ -49,7 +49,8 @@ async function HomeContent() {
       coalesce((select sum(l.quantity * l.unit_price * (1 - l.discount_pct / 100)) from delivery_lines l join deliveries d on d.id = l.delivery_id
                 where d.status not in ('cancelled', 'draft') and d.delivery_date between t.today and t.today + 7), 0)::float as orders_sum_week,
       (select count(*)::int from customer_prices where approved_at is null) as pending_prices,
-      (select count(*)::int from customers where active) as customers
+      (select count(*)::int from customers where active) as customers,
+      (select count(*)::int from inbound_emails where status = 'new' and kind <> 'other') as inbox_waiting
     from t`);
 
   const sales = can(user.role, "leads.view");
@@ -66,6 +67,7 @@ async function HomeContent() {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-3" data-tiles>
         {sales ? <Tile href="/sales" value={s.tasks_due} label="משימות מעקב להיום" note={s.tasks_overdue > 0 ? `${s.tasks_overdue} באיחור` : undefined} id="tile-tasks" /> : null}
         {sales ? <Tile href="/sales" value={s.open_leads} label="פניות פתוחות" id="tile-leads" /> : null}
+        {sales ? <Tile href="/inbox" value={s.inbox_waiting} label="המלצות מהדואר ממתינות לאישור" id="tile-inbox" /> : null}
         {quotes ? <Tile href="/quotes?status=sent" value={s.quotes_waiting} label="הצעות ממתינות ללקוח" note={prices && s.quotes_waiting_sum > 0 ? `${money.format(s.quotes_waiting_sum)} כולל מע״מ` : undefined} id="tile-waiting" /> : null}
         {quotes ? <Tile href="/quotes?status=sent" value={s.quotes_expired} label="הצעות שנשלחו ותוקפן פג" id="tile-expired" /> : null}
         {quotes ? <Tile href="/quotes?status=draft" value={s.quotes_draft} label="הצעות בטיוטה" id="tile-drafts" /> : null}

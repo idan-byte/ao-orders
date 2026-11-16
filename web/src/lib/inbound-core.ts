@@ -94,7 +94,8 @@ export async function inboundCounts(q: Q): Promise<{ waiting: number; other: num
   return r;
 }
 
-export type ApprovalLine = { sku: string; quantity: number };
+/** `price` is typed by the person approving, for this document only. Null: the agreed price, or the base price. */
+export type ApprovalLine = { sku: string; quantity: number; price: number | null };
 export type Approval = { target: "quote" | "order"; customerId: string; deliveryDate: string | null; lines: ApprovalLine[] };
 
 /**
@@ -119,9 +120,16 @@ export async function approveInbound(q: Q, id: string, a: Approval, userId: stri
     const [p] = await q<{ name: string; vat_exempt: boolean; orderable: boolean }>("select p.name, p.vat_exempt, coalesce(o.orderable, false) as orderable from products p left join product_ops o on o.sku = p.sku where p.sku = $1", [l.sku]);
     if (!p) throw new InboundError(`שורה ${i + 1}: המק״ט ${l.sku} אינו קיים בקטלוג.`);
     if (!p.orderable) throw new InboundError(`שורה ${i + 1}: ${p.name} אינו מוצר שאפשר להזמין.`);
-    const price = await resolvePrice(q, a.customerId, l.sku, priceDay);
-    if (!price) throw new InboundError(`שורה ${i + 1}: לא נמצא מחיר ל-${p.name}.`);
-    lines.push({ sku: l.sku, description: p.name, quantity: l.quantity, unitPrice: price.price, discountPct: 0, deliveryDate: null, vatExempt: p.vat_exempt });
+    let unitPrice: number;
+    if (l.price != null) {
+      if (!Number.isFinite(l.price) || l.price < 0) throw new InboundError(`שורה ${i + 1}: המחיר אינו תקין.`);
+      unitPrice = l.price;
+    } else {
+      const price = await resolvePrice(q, a.customerId, l.sku, priceDay);
+      if (!price) throw new InboundError(`שורה ${i + 1}: לא נמצא מחיר ל-${p.name}. יש להזין מחיר ידנית בשורה.`);
+      unitPrice = price.price;
+    }
+    lines.push({ sku: l.sku, description: p.name, quantity: l.quantity, unitPrice, discountPct: 0, deliveryDate: null, vatExempt: p.vat_exempt });
   }
   const origin = `נוצר ממייל של ${mail.from_name ? `${mail.from_name} ` : ""}<${mail.from_email}> מתאריך ${mail.received_at.split("-").reverse().join("/")}: ${mail.subject}`.slice(0, 500);
   const draft: DraftInput = { lines, discountPct: 0, deliveryFee: 0, deliveryDate: a.deliveryDate, windowFrom: null, windowTo: null, addressId: null, customerNotes: null, internalNotes: origin, validUntil: null, paymentTerms: null };

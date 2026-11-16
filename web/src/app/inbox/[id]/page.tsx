@@ -142,6 +142,7 @@ async function Inbound({ params }: Pick<PageProps<"/inbox/[id]">, "params">) {
                       <th className="py-1 text-start font-normal">מוצר בקטלוג</th>
                       <th className="py-1 text-start font-normal">מק״ט אחר</th>
                       <th className="py-1 text-start font-normal">כמות</th>
+                      <th className="py-1 text-start font-normal">מחיר ליחידה (ידני, לא חובה)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -172,12 +173,16 @@ async function Inbound({ params }: Pick<PageProps<"/inbox/[id]">, "params">) {
                         <td className="py-2">
                           <input name={`qty_${i}`} inputMode="decimal" defaultValue={it.quantity ?? ""} aria-label={`כמות עבור ${it.text}`} className={`${field} w-24`} />
                         </td>
+                        <td className="py-2">
+                          <input name={`price_${i}`} inputMode="decimal" dir="ltr" placeholder="לפי הסכם" aria-label={`מחיר ידני עבור ${it.text}`} className={`${field} w-28`} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
+            <p className="text-sm text-muted">מחיר ידני נכנס רק למסמך הזה, ולא משנה את הסכם המחיר של הלקוח. בלי מחיר ידני, המחיר נלקח מהסכם הלקוח, ואם אין הסכם, ממחיר הבסיס.</p>
             <p className="text-sm text-muted">הצעת מחיר נפתחת כטיוטה שלא נשלחה, וממשיכים לערוך אותה במסך ההצעות. הזמנה נפתחת מאושרת, כמו הזמנה שהוקלדה ביד, ולכן היא דורשת תאריך אספקה.</p>
           </ActionForm>
         ) : (
