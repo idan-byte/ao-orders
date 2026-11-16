@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { getInbound, KIND_LABEL } from "@/lib/inbound-core";
 import { ActionForm } from "@/components/action-form";
+import { CustomerPicker } from "@/components/customer-picker";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { approveAction, dismissAction } from "../actions";
@@ -105,17 +106,7 @@ async function Inbound({ params }: Pick<PageProps<"/inbox/[id]">, "params">) {
             <input type="hidden" name="id" value={mail.id} />
             <input type="hidden" name="count" value={items.length} />
             <div className="flex flex-wrap gap-3">
-              <label className={label}>
-                לקוח
-                <select name="customer_id" required defaultValue={mail.customerId ?? ""} className={`${field} max-w-80`}>
-                  <option value="">בחירת לקוח</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <CustomerPicker customers={customers} defaultValue={mail.customerId ?? ""} allowNew={canQuote} />
               <label className={label}>
                 מה לפתוח
                 <select name="target" defaultValue={mail.kind === "order" && canOrder ? "order" : canQuote ? "quote" : "order"} className={field}>
