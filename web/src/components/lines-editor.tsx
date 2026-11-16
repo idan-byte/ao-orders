@@ -2,6 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { computeTotals, VAT_RATE } from "@/lib/quote-totals";
+import { NewAddressPopup } from "@/components/new-address-popup";
 
 // One editor for three jobs: a quote, a new order, and a change to an existing delivery.
 // The server action it submits to is passed in, so the same lines, prices and live totals serve all three.
@@ -42,6 +43,7 @@ export function LinesEditor({
   action: serverAction,
   mode,
   idName,
+  customerId,
 }: {
   initial: EditorInitial;
   products: EditorProduct[];
@@ -49,9 +51,13 @@ export function LinesEditor({
   action: (prev: State, formData: FormData) => Promise<State>;
   mode: EditorMode;
   idName: string;
+  /** When given, a new delivery address can be added for this customer right here. */
+  customerId?: string;
 }) {
   const [state, action, pending] = useActionState<State, FormData>(serverAction, {});
   const [lines, setLines] = useState<EditorLine[]>(initial.lines);
+  const [addedAddresses, setAddedAddresses] = useState<{ id: string; text: string }[]>([]);
+  const allAddresses = [...addresses, ...addedAddresses.filter((a) => !addresses.some((x) => x.id === a.id))];
   const [head, setHead] = useState({
     discountPct: initial.discountPct,
     deliveryFee: initial.deliveryFee,
@@ -106,13 +112,22 @@ export function LinesEditor({
             כתובת אספקה
             <select id="q-address" value={head.addressId} onChange={setH("addressId")} className={field}>
               <option value="">לא נבחרה</option>
-              {addresses.map((a) => (
+              {allAddresses.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.text}
                 </option>
               ))}
             </select>
           </label>
+          {customerId ? (
+            <NewAddressPopup
+              customerId={customerId}
+              onAdded={(a) => {
+                setAddedAddresses((xs) => [...xs, a]);
+                setHead((h) => ({ ...h, addressId: a.id }));
+              }}
+            />
+          ) : null}
           <label className={label} hidden={mode !== "quote"}>
             ההצעה בתוקף עד
             <input id="q-valid-until" type="date" value={head.validUntil} onChange={setH("validUntil")} className={field} />

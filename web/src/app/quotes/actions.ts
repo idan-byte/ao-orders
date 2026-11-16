@@ -6,13 +6,56 @@ import { query, withTransaction } from "@/lib/db";
 import { assertPermission } from "@/lib/auth";
 import { logQuoteEvent } from "@/lib/crm-core";
 import { approveQuote, createQuote, findByToken, QuoteError, rejectQuote, saveDraft, sendQuote, type DraftInput } from "@/lib/quotes-core";
+import { createLocalCustomer, CustomerError } from "@/lib/customers-core";
 
-export type QuoteActionState = { error?: string; ok?: string };
+export type QuoteActionState = { error?: string; ok?: string; id?: string; text?: string };
 
 const message = (e: unknown) => (e instanceof QuoteError ? e.message : "הפעולה נכשלה. שום דבר לא נשמר.");
 
 async function audit(userId: string, action: string, quoteId: string, after: unknown) {
   await query("insert into audit_log (user_id, action, entity_type, entity_id, after) values ($1, $2, 'quote', $3, $4)", [userId, action, quoteId, JSON.stringify(after)]);
+}
+
+const text = (fd: FormData, key: string) => String(fd.get(key) ?? "").trim();
+
+/** A customer typed from the quote screen: a name is enough. The new customer is marked until it is entered in Hashavshevet. */
+export async function createCustomerAction(_prev: QuoteActionState, formData: FormData): Promise<QuoteActionState> {
+  const user = await assertPermission("quotes.edit");
+  try {
+    const r = await withTransaction((q) => createLocalCustomer(q, { name: text(formData, "name"), taxId: text(formData, "tax_id") || null, phone: text(formData, "phone") || null, email: text(formData, "email") || null }));
+    await query("insert into audit_log (user_id, action, entity_type, entity_id, after) values ($1, 'create_customer', 'customer', $2, $3)", [user.id, r.customerId, JSON.stringify({ source: "quote" })]);
+    refresh();
+    return { ok: "הלקוח נוצר. הוא ממתין להיכנס לחשבשבת.", id: r.customerId };
+  } catch (e) {
+    if (e instanceof CustomerError) return { error: e.message };
+    console.error("[create customer]", e instanceof Error ? e.name : "error");
+    return { error: "יצירת הלקוח נכשלה. שום דבר לא נשמר." };
+  }
+}
+
+/** A delivery address added from the quote: the customer's addresses grow, and the quote can use the new one at once. */
+export async function addQuoteAddressAction(_prev: QuoteActionState, formData: FormData): Promise<QuoteActionState> {
+  const user = await assertPermission("quotes.edit");
+  const customerId = text(formData, "customer_id");
+  if (!/^[0-9a-f-]{36}$/i.test(customerId)) return { error: "הלקוח לא נמצא." };
+  const street = text(formData, "street");
+  const city = text(formData, "city");
+  const area = text(formData, "delivery_area");
+  const label = text(formData, "label");
+  if (street.length < 2) return { error: "יש להזין כתובת." };
+  try {
+    const [first] = await query<{ n: number }>("select count(*)::int as n from customer_addresses where customer_id = $1", [customerId]);
+    const [created] = await query<{ id: string; text: string }>(
+      "insert into customer_addresses (customer_id, label, street, city, delivery_area, is_default) values ($1, $2, $3, $4, $5, $6) returning id::text, concat_ws(', ', street, city) as text",
+      [customerId, label || null, street, city || null, area || null, first.n === 0],
+    );
+    await query("insert into audit_log (user_id, action, entity_type, entity_id, after) values ($1, 'add_address', 'customer', $2, $3)", [user.id, customerId, JSON.stringify({ addressId: created.id, street, city, from: "quote" })]);
+    refresh();
+    return { ok: "הכתובת נוספה.", id: created.id, text: created.text };
+  } catch (e) {
+    console.error("[add quote address]", e instanceof Error ? e.name : "error");
+    return { error: "הכתובת לא נשמרה." };
+  }
 }
 
 export async function createQuoteAction(_prev: QuoteActionState, formData: FormData): Promise<QuoteActionState> {

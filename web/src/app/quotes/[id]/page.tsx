@@ -262,7 +262,7 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
           <h2 className="font-display text-lg font-bold">
             {latest.sent_at ? `תיקון ההצעה (שמירה תפתח גרסה ${latest.version + 1})` : `עריכת גרסה ${latest.version}`}
           </h2>
-          <LinesEditor key={`${latest.id}-${latest.sent_at ?? "draft"}`} mode="quote" idName="quote_id" action={saveQuoteAction} initial={editor.initial} products={editor.products} addresses={editor.addresses} />
+          <LinesEditor key={`${latest.id}-${latest.sent_at ?? "draft"}`} mode="quote" idName="quote_id" action={saveQuoteAction} initial={editor.initial} products={editor.products} addresses={editor.addresses} customerId={quote.customer_id} />
         </>
       ) : null}
 
@@ -279,6 +279,10 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
                     <Link href={`/quotes/${id}/print?v=${v.version}`} className="text-accent underline-offset-2 hover:underline">
                       הצג
                     </Link>
+                    {" · "}
+                    <a href={`/quotes/${id}/pdf?v=${v.version}`} className="text-accent underline-offset-2 hover:underline">
+                      הורד PDF
+                    </a>
                   </>
                 ) : null}
               </li>

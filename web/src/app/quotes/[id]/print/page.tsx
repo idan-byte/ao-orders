@@ -30,10 +30,12 @@ async function PrintContent({ params, searchParams }: Pick<PageProps<"/quotes/[i
     <div className="flex flex-col gap-4">
       <div className="no-print flex flex-wrap items-center gap-3">
         <PrintButton />
+        <a id="quote-print-pdf" href={`/quotes/${id}/pdf?v=${version}`} className="rounded-lg border border-line px-4 py-2">
+          הורד PDF
+        </a>
         <Link href={`/quotes/${id}`} className="rounded-lg border border-line px-4 py-2">
           חזרה להצעה
         </Link>
-        <span className="text-sm text-muted">בחלון ההדפסה אפשר לבחור ״שמירה כ-PDF״.</span>
       </div>
       <QuoteDocument doc={doc} />
     </div>
