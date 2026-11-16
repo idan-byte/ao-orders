@@ -19,7 +19,7 @@ function message(where: string, e: unknown): string {
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
 
 /** Checks the mailbox now, without waiting for the next automatic check. */
-export async function checkNowAction(_prev: InboxState, _fd: FormData): Promise<InboxState> {
+export async function checkNowAction(): Promise<InboxState> {
   await assertPermission("leads.view");
   const r = await syncInbound();
   refresh();
