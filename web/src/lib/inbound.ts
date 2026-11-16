@@ -2,7 +2,7 @@
 // Runs from the scheduler and from the "check now" button; two runs never overlap.
 import { readdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
-import { query, systemTransaction } from "@/lib/db";
+import { systemTransaction } from "@/lib/db";
 import { aiEnabled, analyzeMail } from "@/lib/inbound-ai";
 import { isKnown, mailboxState, productCandidates, saveMailboxState, storeMail, customerOfSender, type Analysis, type MailboxState, type RawMail } from "@/lib/inbound-core";
 import { fetchNewMail, readerConfig } from "@/lib/inbound-mail";
@@ -15,7 +15,7 @@ export type IntakeStatus = { mail: boolean; ai: boolean; mailbox: string | null;
 export async function intakeStatus(): Promise<IntakeStatus> {
   const cfg = readerConfig();
   const mailbox = cfg ? `${cfg.user}/${cfg.mailbox}` : null;
-  return { mail: !!cfg, ai: aiEnabled(), mailbox, state: mailbox ? await mailboxState(query, mailbox) : null };
+  return { mail: !!cfg, ai: aiEnabled(), mailbox, state: mailbox ? await systemTransaction((q) => mailboxState(q, mailbox)) : null };
 }
 
 // Outside production, a file dropped into web/.data/inbound-test is taken in as a message that was already
@@ -52,14 +52,15 @@ async function run(): Promise<SyncResult> {
   const cfg = readerConfig();
   if (!cfg || !aiEnabled()) return result;
   const mailbox = `${cfg.user}/${cfg.mailbox}`;
-  let state = await mailboxState(query, mailbox);
+  const readState = () => systemTransaction((q) => mailboxState(q, mailbox));
+  let state = await readState();
   try {
     const fetched = await fetchNewMail(cfg, state ? { uidValidity: state.uidValidity, lastUid: state.lastUid } : null);
     let lastUid = state?.uidValidity === fetched.uidValidity ? state.lastUid : fetched.lastUid;
     for (const mail of fetched.mails) {
-      if (!(await isKnown(query, mail.messageId))) {
-        const customerId = await customerOfSender(query, mail.fromEmail);
-        const analysis = await analyzeMail(mail, (text) => productCandidates(query, text, customerId));
+      if (!(await systemTransaction((q) => isKnown(q, mail.messageId)))) {
+        const customerId = await systemTransaction((q) => customerOfSender(q, mail.fromEmail));
+        const analysis = await analyzeMail(mail, (text) => systemTransaction((q) => productCandidates(q, text, customerId)));
         await systemTransaction((q) => storeMail(q, mail, analysis));
         result.read++;
         if (analysis.kind === "other") result.other++;
@@ -75,7 +76,7 @@ async function run(): Promise<SyncResult> {
     const name = e instanceof Error ? `${e.name}: ${e.message}`.slice(0, 300) : "unknown error";
     result.error = name;
     console.error("[inbound]", name);
-    state = await mailboxState(query, mailbox);
+    state = await readState().catch(() => null);
     await systemTransaction((q) => saveMailboxState(q, mailbox, state?.uidValidity ?? null, state?.lastUid ?? 0, name)).catch(() => {});
   }
   return result;

@@ -30,7 +30,7 @@ async function tick() {
   try {
     await syncInbound();
   } catch (e) {
-    console.error("[scheduler] incoming mail:", e instanceof Error ? e.name : "error");
+    console.error("[scheduler] incoming mail:", e instanceof Error ? `${e.name}: ${e.message.slice(0, 200)}` : "error");
   }
 }
 
