@@ -25,7 +25,7 @@ export async function createCustomerAction(_prev: QuoteActionState, formData: Fo
     const r = await withTransaction((q) => createLocalCustomer(q, { name: text(formData, "name"), taxId: text(formData, "tax_id") || null, phone: text(formData, "phone") || null, email: text(formData, "email") || null }));
     await query("insert into audit_log (user_id, action, entity_type, entity_id, after) values ($1, 'create_customer', 'customer', $2, $3)", [user.id, r.customerId, JSON.stringify({ source: "quote" })]);
     refresh();
-    return { ok: "הלקוח נוצר. הוא ממתין להיכנס לחשבשבת.", id: r.customerId };
+    return { ok: "הלקוח נוצר. הוא ממתין להיכנס לחשבשבת.", id: r.customerId, text: text(formData, "name").replace(/\s+/g, " ") };
   } catch (e) {
     if (e instanceof CustomerError) return { error: e.message };
     console.error("[create customer]", e instanceof Error ? e.name : "error");
