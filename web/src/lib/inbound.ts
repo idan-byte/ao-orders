@@ -4,7 +4,7 @@ import { readdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { systemTransaction } from "@/lib/db";
 import { aiEnabled, analyzeMail } from "@/lib/inbound-ai";
-import { isKnown, mailboxState, productCandidates, saveMailboxState, storeMail, customerOfSender, type Analysis, type MailboxState, type RawMail } from "@/lib/inbound-core";
+import { isKnown, mailboxState, orderableCatalogue, productCandidates, saveMailboxState, storeMail, customerOfSender, type Analysis, type MailboxState, type RawMail } from "@/lib/inbound-core";
 import { fetchNewMail, readerConfig } from "@/lib/inbound-mail";
 
 export type SyncResult = { read: number; recommendations: number; other: number; error: string | null };
@@ -19,7 +19,8 @@ export async function intakeStatus(): Promise<IntakeStatus> {
 }
 
 // Outside production, a file dropped into web/.data/inbound-test is taken in as a message that was already
-// sorted: { "mail": {...}, "analysis": {...} }. This is how the screens are tested without a mailbox or the AI.
+// sorted: { "mail": {...}, "analysis": {...} }. A kept file is given as { "name", "mime", "base64" } in mail.files.
+// This is how the screens are tested without a mailbox or the AI.
 async function takeTestFiles(result: SyncResult) {
   if (process.env.NODE_ENV === "production") return;
   const dir = path.join(process.cwd(), ".data", "inbound-test");
@@ -32,7 +33,9 @@ async function takeTestFiles(result: SyncResult) {
   for (const f of files) {
     const file = path.join(dir, f);
     try {
-      const { mail, analysis } = JSON.parse(await readFile(file, "utf8")) as { mail: RawMail; analysis: Analysis };
+      const parsed = JSON.parse(await readFile(file, "utf8")) as { mail: Omit<RawMail, "files"> & { files?: { name: string; mime: string; base64: string }[] }; analysis: Analysis };
+      const { analysis } = parsed;
+      const mail: RawMail = { ...parsed.mail, files: parsed.mail.files?.map((x) => ({ name: x.name, mime: x.mime, data: Buffer.from(x.base64, "base64") })) };
       const id = await systemTransaction((q) => storeMail(q, mail, analysis), (r) => r !== null);
       if (id) {
         result.read++;
@@ -60,7 +63,7 @@ async function run(): Promise<SyncResult> {
     for (const mail of fetched.mails) {
       if (!(await systemTransaction((q) => isKnown(q, mail.messageId)))) {
         const customerId = await systemTransaction((q) => customerOfSender(q, mail.fromEmail));
-        const analysis = await analyzeMail(mail, (text) => systemTransaction((q) => productCandidates(q, text, customerId)));
+        const analysis = await analyzeMail(mail, (text) => systemTransaction((q) => productCandidates(q, text, customerId)), () => systemTransaction((q) => orderableCatalogue(q)));
         await systemTransaction((q) => storeMail(q, mail, analysis));
         result.read++;
         if (analysis.kind === "other") result.other++;

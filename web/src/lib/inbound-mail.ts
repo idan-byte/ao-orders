@@ -18,7 +18,9 @@ export function readerConfig(): ReaderConfig | null {
 
 export type Fetched = { uidValidity: number; lastUid: number; mails: (RawMail & { uid: number })[] };
 
-const MAX_SOURCE = 5 * 1024 * 1024;
+// A message larger than this is skipped (not half-read); files of a message are kept up to MAX_KEPT each.
+const MAX_SOURCE = 15 * 1024 * 1024;
+const MAX_KEPT = 10 * 1024 * 1024;
 
 /**
  * The messages that arrived after the last one read, oldest first, at most `max` of them.
@@ -51,6 +53,8 @@ export async function fetchNewMail(cfg: ReaderConfig, known: { uidValidity: numb
         const from = parsed.from?.value?.[0];
         const fromEmail = (from?.address ?? "").toLowerCase();
         if (!fromEmail || fromEmail === cfg.user.toLowerCase()) continue; // our own messages are not incoming mail
+        // Pictures inside the signature are not attachments of the message.
+        const attached = (parsed.attachments ?? []).filter((a) => !a.related);
         mails.push({
           uid: h.uid,
           mailbox: `${cfg.user}/${cfg.mailbox}`,
@@ -60,7 +64,9 @@ export async function fetchNewMail(cfg: ReaderConfig, known: { uidValidity: numb
           subject: parsed.subject ?? "",
           receivedAt: (parsed.date ?? new Date()).toISOString(),
           body: (parsed.text ?? "").replace(/\r/g, "").trim(),
-          attachments: (parsed.attachments ?? []).map((a) => ({ name: a.filename ?? "קובץ בלי שם", size: a.size ?? 0 })),
+          attachments: attached.map((a) => ({ name: a.filename ?? "קובץ בלי שם", size: a.size ?? 0, mime: (a.contentType ?? "").toLowerCase() })),
+          // Files larger than the limit are listed but not kept; the rest are kept whatever their kind.
+          files: attached.filter((a) => a.content && a.content.length <= MAX_KEPT).map((a) => ({ name: a.filename ?? "קובץ בלי שם", mime: (a.contentType ?? "").toLowerCase(), data: a.content })),
         });
       }
       return { uidValidity, lastUid, mails };
