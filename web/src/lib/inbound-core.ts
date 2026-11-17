@@ -14,11 +14,38 @@ export class InboundError extends Error {}
 export type InboundKind = "quote_request" | "order" | "other";
 export const KIND_LABEL: Record<InboundKind, string> = { quote_request: "בקשה להצעת מחיר", order: "הזמנה", other: "לא רלוונטי" };
 
-export type RawMail = { mailbox: string; messageId: string; fromEmail: string; fromName: string | null; subject: string; receivedAt: string; body: string; attachments: { name: string; size: number }[] };
+export type Attachment = { name: string; size: number; mime: string };
+export type RawMail = {
+  mailbox: string;
+  messageId: string;
+  fromEmail: string;
+  fromName: string | null;
+  subject: string;
+  receivedAt: string;
+  body: string;
+  attachments: Attachment[];
+  /** The content of the attachments that are kept (not every attachment is, see inbound-mail.ts). */
+  files?: { name: string; mime: string; data: Buffer }[];
+};
 
 /** One line the sender asked for: their words, and the catalogue item it was matched to (never an item that does not exist). */
-export type AnalysisItem = { text: string; quantity: number | null; unit: string | null; sku: string | null; certain: boolean; candidates: { sku: string; name: string }[] };
-export type Analysis = { kind: InboundKind; summary: string; deliveryDate: string | null; deliveryNote: string | null; items: AnalysisItem[] };
+// `suggestion` is set when the line is a product the system proposes for a general request ("כיבוד"): the reason, in Hebrew.
+export type AnalysisItem = { text: string; quantity: number | null; unit: string | null; sku: string | null; certain: boolean; candidates: { sku: string; name: string }[]; suggestion?: string | null };
+export type Analysis = {
+  kind: InboundKind;
+  summary: string;
+  deliveryDate: string | null;
+  deliveryNote: string | null;
+  items: AnalysisItem[];
+  /** Names of the attached files that the AI read. */
+  filesRead?: string[];
+  /** Set when the attached files could not be read and the message was sorted from its text only. */
+  filesNote?: string | null;
+};
+
+// The kinds of attached file the AI can read, and the largest size of each it accepts.
+const READABLE: Record<string, number> = { "application/pdf": 10 * 1024 * 1024, "image/jpeg": 5 * 1024 * 1024, "image/png": 5 * 1024 * 1024, "image/gif": 5 * 1024 * 1024, "image/webp": 5 * 1024 * 1024 };
+export const readableByAi = (mime: string, size: number): boolean => READABLE[mime] !== undefined && size <= READABLE[mime];
 
 const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
 const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(`${v}T00:00:00Z`).getTime());
@@ -68,7 +95,27 @@ export async function storeMail(q: Q, mail: RawMail, analysis: Analysis): Promis
      values ($1, $2, $3, $4, $5, $6::timestamptz, $7, $8, $9, $10, $11, $12) returning id::text`,
     [mail.mailbox, mail.messageId, mail.fromEmail.toLowerCase(), mail.fromName, mail.subject.slice(0, 300), mail.receivedAt, relevant ? mail.body.slice(0, 20000) : null, JSON.stringify(relevant ? mail.attachments.slice(0, 20) : []), analysis.kind, relevant ? "new" : "dismissed", customerId, JSON.stringify(relevant ? analysis : { kind: "other", summary: analysis.summary })],
   );
+  if (relevant) {
+    const read = analysis.filesRead ?? [];
+    for (const f of (mail.files ?? []).slice(0, 20)) {
+      await q("insert into inbound_files (inbound_id, name, mime, size, read_by_ai, data) values ($1, $2, $3, $4, $5, $6)", [r.id, f.name.slice(0, 300), f.mime.slice(0, 100), f.data.length, read.includes(f.name), f.data]);
+    }
+  }
   return r.id;
+}
+
+export type InboundFile = { id: string; name: string; mime: string; size: number; readByAi: boolean };
+
+/** The kept file of a request or an order, for a person to open. */
+export async function inboundFile(q: Q, id: string): Promise<{ name: string; mime: string; data: Buffer } | null> {
+  if (!isUuid(id)) return null;
+  const [r] = await q<{ name: string; mime: string; data: Uint8Array }>("select name, mime, data from inbound_files where id = $1", [id]);
+  return r ? { name: r.name, mime: r.mime, data: Buffer.from(r.data) } : null;
+}
+
+/** The catalogue items that can be ordered, for the AI to propose from when a request names no product. */
+export async function orderableCatalogue(q: Q, limit = 1500): Promise<{ sku: string; name: string }[]> {
+  return q<{ sku: string; name: string }>("select p.sku, p.name from products p join product_ops o on o.sku = p.sku where o.orderable and p.hash_active order by p.name limit $1", [limit]);
 }
 
 export type InboundRow = { id: string; fromEmail: string; fromName: string | null; subject: string; receivedAt: string; kind: InboundKind; status: "new" | "approved" | "dismissed"; customerId: string | null; customer: string | null; summary: string | null; lines: number; quoteId: string | null; quoteNumber: number | null; orderId: string | null; orderNumber: number | null };
@@ -82,12 +129,14 @@ export async function listInbound(q: Q, status: "new" | "approved" | "dismissed"
   return q<InboundRow>(`select ${ROW} ${FROM} where e.status = $1 and e.kind <> 'other' order by e.received_at desc limit ${Math.min(Math.max(limit, 1), 500)}`, [status]);
 }
 
-export type InboundDetails = InboundRow & { body: string | null; attachments: { name: string; size: number }[]; analysis: Analysis | null; dismissReason: string | null; handledBy: string | null; handledAt: string | null };
+export type InboundDetails = InboundRow & { body: string | null; attachments: Attachment[]; files: InboundFile[]; analysis: Analysis | null; dismissReason: string | null; handledBy: string | null; handledAt: string | null };
 
 export async function getInbound(q: Q, id: string): Promise<InboundDetails | null> {
   if (!isUuid(id)) return null;
   const [r] = await q<InboundDetails>(`select ${ROW}, e.body, e.attachments, e.analysis, e.dismiss_reason as "dismissReason", u.full_name as "handledBy", e.handled_at::text as "handledAt" ${FROM} left join users u on u.id = e.handled_by where e.id = $1`, [id]);
-  return r ?? null;
+  if (!r) return null;
+  r.files = await q<InboundFile>(`select id::text, name, mime, size, read_by_ai as "readByAi" from inbound_files where inbound_id = $1 order by name, id`, [id]);
+  return r;
 }
 
 export async function inboundCounts(q: Q): Promise<{ waiting: number; other: number }> {

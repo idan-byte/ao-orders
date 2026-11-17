@@ -5,7 +5,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { storeMail, isKnown, customerOfSender, productCandidates, listInbound, getInbound, inboundCounts, approveInbound, dismissInbound, mailboxState, saveMailboxState } from "../src/lib/inbound-core.ts";
+import { storeMail, isKnown, customerOfSender, productCandidates, listInbound, getInbound, inboundCounts, approveInbound, dismissInbound, mailboxState, saveMailboxState, readableByAi, inboundFile, orderableCatalogue } from "../src/lib/inbound-core.ts";
 
 const db = new PGlite();
 const dir = path.join(process.cwd(), "..", "db", "migrations");
@@ -106,6 +106,23 @@ await saveMailboxState(q, "box/INBOX", 77, 1200, null);
 await saveMailboxState(q, "box/INBOX", 77, 1205, "Error: connection refused");
 const st = await mailboxState(q, "box/INBOX");
 check("the place in the mailbox and the last failure are kept", [st.uidValidity, st.lastUid, st.lastError, typeof st.checkedAt], [77, 1205, "Error: connection refused", "string"]);
+
+// ---------- attached files, kept with the request
+check("the AI reads only PDF and pictures of a sensible size", [readableByAi("application/pdf", 9 * 1024 * 1024), readableByAi("application/pdf", 11 * 1024 * 1024), readableByAi("image/png", 6 * 1024 * 1024), readableByAi("application/vnd.openxmlformats-officedocument.wordprocessingml.document", 1000)], [true, false, false, false]);
+const pdfBytes = Buffer.from("%PDF-1.4 הזמנה");
+const id6 = await storeMail(q, mail(6, { attachments: [{ name: "order.pdf", size: pdfBytes.length, mime: "application/pdf" }, { name: "list.docx", size: 2, mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }], files: [{ name: "order.pdf", mime: "application/pdf", data: pdfBytes }, { name: "list.docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", data: Buffer.from("PK") }] }), { ...order, filesRead: ["order.pdf"], filesNote: null });
+const kept6 = await getInbound(q, id6);
+check("a kept request keeps its files, and says which ones the AI read", kept6.files.map((f) => [f.name, f.readByAi, f.size]), [["list.docx", false, 2], ["order.pdf", true, pdfBytes.length]]);
+const pdfBack = await inboundFile(q, kept6.files.find((f) => f.name === "order.pdf").id);
+check("a kept file can be opened again, as it was received", [pdfBack.name, pdfBack.mime, pdfBack.data.toString("utf8")], ["order.pdf", "application/pdf", "%PDF-1.4 הזמנה"]);
+check("a file id that is not one gives nothing", [await inboundFile(q, "not-an-id"), await inboundFile(q, "00000000-0000-0000-0000-000000000000")], [null, null]);
+const idFiles = await storeMail(q, mail(7, { files: [{ name: "order.pdf", mime: "application/pdf", data: pdfBytes }] }), { ...order, filesRead: [], filesNote: "הקבצים המצורפים לא נקראו." });
+check("a file the AI could not read is kept and the note is shown", [(await getInbound(q, idFiles)).files.map((f) => f.readByAi), (await getInbound(q, idFiles)).analysis.filesNote], [[false], "הקבצים המצורפים לא נקראו."]);
+const otherWithFile = await storeMail(q, mail(8, { subject: "עדכון", files: [{ name: "logo.png", mime: "image/png", data: Buffer.from([1, 2, 3]) }] }), { kind: "other", summary: "הודעה כללית.", deliveryDate: null, deliveryNote: null, items: [] });
+check("a message that is neither keeps no file", (await one("select count(*)::int as n from inbound_files where inbound_id = $1", [otherWithFile])).n, 0);
+
+// ---------- the catalogue the AI proposes from
+check("the proposals come only from items that can be ordered and still exist", (await orderableCatalogue(q)).map((c) => c.sku).sort(), ["50002", "50003", "50088"]);
 
 console.log(failed === 0 ? "INBOUND CHECK PASSED" : `INBOUND CHECK FAILED (${failed})`);
 process.exit(failed === 0 ? 0 : 1);

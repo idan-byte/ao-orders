@@ -15,6 +15,7 @@ const field = "rounded-lg border border-line bg-surface px-3 py-2 text-foregroun
 const label = "flex flex-col gap-1 text-sm text-muted";
 const small = "rounded-lg border border-line px-3 py-1.5 text-sm";
 const stamp = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const size = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
 // One incoming message with the recommendation made from it. A person corrects it and approves, or dismisses it.
 export default function InboundPage({ params }: PageProps<"/inbox/[id]">) {
@@ -89,9 +90,29 @@ async function Inbound({ params }: Pick<PageProps<"/inbox/[id]">, "params">) {
           {mail.body || "להודעה אין תוכן טקסט."}
         </p>
         {mail.attachments.length > 0 ? (
-          <p className="mt-3 text-sm font-bold" id="inbound-attachments">
-            קבצים מצורפים (לא נקראו, יש לפתוח אותם בתיבת הדואר): <span dir="auto">{mail.attachments.map((a) => a.name).join(", ")}</span>
-          </p>
+          <div className="mt-3 text-sm" id="inbound-attachments">
+            <h3 className="font-bold">קבצים מצורפים</h3>
+            <ul className="mt-1 flex flex-col gap-1">
+              {mail.attachments.map((a, i) => {
+                const f = mail.files.find((x) => x.name === a.name);
+                return (
+                  <li key={i}>
+                    {f ? (
+                      <a href={`/inbox/files/${f.id}`} className="underline" dir="auto">
+                        {a.name}
+                      </a>
+                    ) : (
+                      <span dir="auto">{a.name}</span>
+                    )}
+                    <span className="text-muted"> · {size(a.size)}</span>
+                    {" · "}
+                    {f ? (f.readByAi ? "נקרא על ידי ה-AI" : "נשמר, לא נקרא (סוג הקובץ לא נתמך לקריאה)") : `לא נשמר${a.size > 10 * 1024 * 1024 ? " (גדול מדי)" : ""}`}
+                  </li>
+                );
+              })}
+            </ul>
+            {mail.analysis?.filesNote ? <p className="mt-2 font-bold">{mail.analysis.filesNote}</p> : null}
+          </div>
         ) : null}
       </section>
 
@@ -144,7 +165,8 @@ async function Inbound({ params }: Pick<PageProps<"/inbox/[id]">, "params">) {
                         <td className="py-2">
                           {it.text}
                           {it.unit ? <span className="text-muted"> · {it.unit}</span> : null}
-                          {it.sku && !it.certain ? <div className="font-bold">ההתאמה אינה ודאית, יש לבדוק</div> : null}
+                          {it.suggestion ? <div className="text-sm">מוצע: {it.suggestion}</div> : null}
+                          {it.sku && !it.certain && !it.suggestion ? <div className="font-bold">ההתאמה אינה ודאית, יש לבדוק</div> : null}
                           {!it.sku ? <div className="font-bold">לא נמצא מוצר מתאים</div> : null}
                         </td>
                         <td className="py-2">
@@ -172,6 +194,7 @@ async function Inbound({ params }: Pick<PageProps<"/inbox/[id]">, "params">) {
                 </table>
               </div>
             )}
+            <p className="text-sm text-muted">שורה עם הערה “מוצע” היא הצעה של המערכת לבקשה כללית שלא נכתבו בה מוצרים. לא מסמנים אותה בלי לבחור כמות, ורק מה שמתאים ללקוח.</p>
             <p className="text-sm text-muted">מחיר ידני נכנס רק למסמך הזה, ולא משנה את הסכם המחיר של הלקוח. בלי מחיר ידני, המחיר נלקח מהסכם הלקוח, ואם אין הסכם, ממחיר הבסיס.</p>
             <p className="text-sm text-muted">הצעת מחיר נפתחת כטיוטה שלא נשלחה, וממשיכים לערוך אותה במסך ההצעות. הזמנה נפתחת מאושרת, כמו הזמנה שהוקלדה ביד, ולכן היא דורשת תאריך אספקה.</p>
           </ActionForm>
