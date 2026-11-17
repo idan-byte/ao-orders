@@ -232,7 +232,7 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
       {canEdit ? (
         <section className={panel} id="quote-letterhead">
           <h2 className="mb-2 font-display text-base font-bold">דף לוגו</h2>
-          <ActionForm action={setQuoteLetterheadAction} submit="שמור" primary={false}>
+          <ActionForm action={setQuoteLetterheadAction} submit="שמור דף לוגו" primary={false}>
             <input type="hidden" name="quote_id" value={id} />
             <label className="flex flex-col gap-1 text-sm text-muted">
               ההצעה תודפס תחת

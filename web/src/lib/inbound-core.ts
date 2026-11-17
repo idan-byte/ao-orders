@@ -7,6 +7,7 @@ import { addActivity } from "./crm-core.ts";
 import { resolvePrice } from "./customers-core.ts";
 import { createOrder } from "./orders-core.ts";
 import { createQuote, saveDraft, type DraftInput } from "./quotes-core.ts";
+import { DEFAULT_VALID_DAYS } from "./quote-totals.ts";
 
 export class InboundError extends Error {}
 
@@ -140,7 +141,9 @@ export async function approveInbound(q: Q, id: string, a: Approval, userId: stri
     lines.push({ sku: l.sku, description: p.name, quantity: l.quantity, unitPrice, discountPct: 0, deliveryDate: null, vatExempt: p.vat_exempt });
   }
   const origin = `נוצר ממייל של ${mail.from_name ? `${mail.from_name} ` : ""}<${mail.from_email}> מתאריך ${mail.received_at.split("-").reverse().join("/")}: ${mail.subject}`.slice(0, 500);
-  const draft: DraftInput = { lines, discountPct: 0, deliveryFee: 0, deliveryDate: a.deliveryDate, windowFrom: null, windowTo: null, addressId: await deliveryAddressOf(q, a.customerId), customerNotes: null, internalNotes: origin, validUntil: null, paymentTerms: null };
+  // The same validity a quote typed by hand gets. Saving a draft replaces the date, so it is set here.
+  const [valid] = await q<{ d: string }>(`select (current_date + ${DEFAULT_VALID_DAYS})::text as d`);
+  const draft: DraftInput = { lines, discountPct: 0, deliveryFee: 0, deliveryDate: a.deliveryDate, windowFrom: null, windowTo: null, addressId: await deliveryAddressOf(q, a.customerId), customerNotes: null, internalNotes: origin, validUntil: a.target === "quote" ? valid.d : null, paymentTerms: null };
 
   if (a.target === "quote") {
     const { quoteId, number } = await createQuote(q, a.customerId, userId);

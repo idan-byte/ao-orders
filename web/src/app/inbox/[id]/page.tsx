@@ -106,7 +106,7 @@ async function Inbound({ params }: Pick<PageProps<"/inbox/[id]">, "params">) {
             <input type="hidden" name="id" value={mail.id} />
             <input type="hidden" name="count" value={items.length} />
             <div className="flex flex-wrap gap-3">
-              <CustomerPicker customers={customers} defaultValue={mail.customerId ?? ""} allowNew={canQuote} />
+              <CustomerPicker customers={customers} defaultValue={mail.customerId ?? ""} allowNew={canQuote} hint={mail.customerId ? undefined : "כתובת השולח אינה רשומה אצל אף לקוח, או רשומה אצל יותר מאחד. יש לבחור את הלקוח."} />
               <label className={label}>
                 מה לפתוח
                 <select name="target" defaultValue={mail.kind === "order" && canOrder ? "order" : canQuote ? "quote" : "order"} className={field}>
@@ -115,11 +115,10 @@ async function Inbound({ params }: Pick<PageProps<"/inbox/[id]">, "params">) {
                 </select>
               </label>
               <label className={label}>
-                תאריך אספקה
+                תאריך אספקה (חובה להזמנה)
                 <input name="delivery_date" type="date" defaultValue={mail.analysis?.deliveryDate ?? ""} className={field} />
               </label>
             </div>
-            {mail.customerId ? null : <p className="text-sm font-bold">כתובת השולח אינה רשומה אצל אף לקוח, או רשומה אצל יותר מאחד. יש לבחור את הלקוח.</p>}
 
             {items.length === 0 ? (
               <p className="font-bold">בהודעה לא זוהו מוצרים. אפשר לדחות את ההמלצה ולפתוח את המסמך ביד.</p>
