@@ -93,6 +93,13 @@ check("a dismissed recommendation keeps the reason", [(await getInbound(q, id4))
 await refuses("a dismissed recommendation cannot be approved", () => approveInbound(q, id4, { target: "order", customerId: cust, deliveryDate: "2026-12-03", lines }, user, TODAY), "כבר טופלה");
 check("the lists after handling", [(await listInbound(q, "new")).length, (await listInbound(q, "approved")).length, (await listInbound(q, "dismissed")).map((r) => r.subject)], [0, 2, ["הזמנה 4"]]);
 
+// ---------- the delivery address of a mail-made document
+const addr = await one("insert into customer_addresses (customer_id, street, is_default) values ($1, 'רחוב בדיקה 1', true) returning id::text", [cust]);
+const id5 = await storeMail(q, mail(5), order);
+const o5 = await approveInbound(q, id5, { target: "order", customerId: cust, deliveryDate: "2026-12-03", lines }, user, TODAY);
+const day5 = await one("select d.address_id::text as a from deliveries d where d.order_id = $1", [o5.orderId]);
+check("a mail-made order takes the customer's default address", day5.a, addr.id);
+
 // ---------- where the reading stands
 check("a mailbox that was never read has no state", await mailboxState(q, "box/INBOX"), null);
 await saveMailboxState(q, "box/INBOX", 77, 1200, null);

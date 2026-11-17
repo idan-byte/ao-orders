@@ -102,6 +102,14 @@ export type Approval = { target: "quote" | "order"; customerId: string; delivery
  * A person approves a recommendation, as they corrected it: the customer, the lines and the date are theirs.
  * A quote is opened as a draft that was not sent; an order is opened approved, like one typed by an employee.
  */
+/** The address a mail-made document starts with: the customer's default, or the only address they have. Otherwise none, and the person picks. */
+export async function deliveryAddressOf(q: Q, customerId: string): Promise<string | null> {
+  const rows = await q<{ id: string; is_default: boolean }>("select id::text, is_default from customer_addresses where customer_id = $1 order by is_default desc, id limit 2", [customerId]);
+  if (rows.length === 0) return null;
+  if (rows[0].is_default) return rows[0].id;
+  return rows.length === 1 ? rows[0].id : null;
+}
+
 export async function approveInbound(q: Q, id: string, a: Approval, userId: string, today: string): Promise<{ quoteId?: string; orderId?: string; number: number }> {
   const [mail] = await q<{ status: string; kind: string; from_email: string; from_name: string | null; subject: string; received_at: string; summary: string | null }>(
     "select status, kind, from_email, from_name, subject, received_at::date::text as received_at, analysis->>'summary' as summary from inbound_emails where id = $1 for update",
@@ -132,7 +140,7 @@ export async function approveInbound(q: Q, id: string, a: Approval, userId: stri
     lines.push({ sku: l.sku, description: p.name, quantity: l.quantity, unitPrice, discountPct: 0, deliveryDate: null, vatExempt: p.vat_exempt });
   }
   const origin = `נוצר ממייל של ${mail.from_name ? `${mail.from_name} ` : ""}<${mail.from_email}> מתאריך ${mail.received_at.split("-").reverse().join("/")}: ${mail.subject}`.slice(0, 500);
-  const draft: DraftInput = { lines, discountPct: 0, deliveryFee: 0, deliveryDate: a.deliveryDate, windowFrom: null, windowTo: null, addressId: null, customerNotes: null, internalNotes: origin, validUntil: null, paymentTerms: null };
+  const draft: DraftInput = { lines, discountPct: 0, deliveryFee: 0, deliveryDate: a.deliveryDate, windowFrom: null, windowTo: null, addressId: await deliveryAddressOf(q, a.customerId), customerNotes: null, internalNotes: origin, validUntil: null, paymentTerms: null };
 
   if (a.target === "quote") {
     const { quoteId, number } = await createQuote(q, a.customerId, userId);
