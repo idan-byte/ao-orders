@@ -9,7 +9,7 @@ const label = "flex flex-col gap-1 text-sm text-muted";
 // The customer choice of a form, with the option to add a customer that is not in the list yet.
 // A long list is narrowed by typing part of a name, so the right customer is found at once.
 // A customer added here is put in the list and chosen at once.
-export function CustomerPicker({ customers, defaultValue, allowNew, id }: { customers: { id: string; name: string }[]; defaultValue: string; allowNew: boolean; id?: string }) {
+export function CustomerPicker({ customers, defaultValue, allowNew, id, hint }: { customers: { id: string; name: string }[]; defaultValue: string; allowNew: boolean; id?: string; hint?: string }) {
   const [list, setList] = useState(customers);
   const [value, setValue] = useState(defaultValue);
   const [search, setSearch] = useState("");
@@ -37,6 +37,7 @@ export function CustomerPicker({ customers, defaultValue, allowNew, id }: { cust
           ))}
         </select>
       </label>
+      {hint && value === "" ? <p className="w-full text-sm font-bold">{hint}</p> : null}
       {allowNew ? (
         <NewCustomerPopup
           onCreated={(c) => {

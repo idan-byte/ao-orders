@@ -200,7 +200,7 @@ export function LinesEditor({
                           ))}
                         </select>
                       ) : null}
-                      {p ? <div className="mt-1 text-xs text-muted">{p.agreed ? "מחיר הסכם" : p.price > 0 ? "מחיר בסיס" : "אין מחיר בסיס"}</div> : null}
+                      {p ? <div className="mt-1 text-xs text-muted">{p.price !== Number(l.unitPrice.replace(",", ".")) && l.unitPrice.trim() !== "" ? "מחיר ידני, רק למסמך הזה" : p.agreed ? "מחיר הסכם" : p.price > 0 ? "מחיר בסיס" : "אין מחיר בסיס"}</div> : null}
                     </td>
                     <td className="px-1.5 py-2">
                       <input aria-label={`תיאור, שורה ${i + 1}`} value={l.description} onChange={(e) => patch(l.key, { description: e.target.value })} className={`${field} w-44`} />
