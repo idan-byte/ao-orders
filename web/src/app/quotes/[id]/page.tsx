@@ -4,6 +4,8 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { loadQuoteDoc, QUOTE_STATUS } from "@/lib/quotes-data";
+import { quoteTone } from "@/lib/status-tone";
+import { StatusPill } from "@/components/status-pill";
 import { ActionForm } from "@/components/action-form";
 import { CopyLink } from "@/components/copy-link";
 import { Loading } from "@/components/loading";
@@ -113,9 +115,9 @@ async function QuoteContent({ params }: { params: PageProps<"/quotes/[id]">["par
           הצעת מחיר <span dir="ltr">{quote.number}</span> · {quote.customer}
         </h1>
         <div className="flex items-center gap-2">
-          <span id="quote-status" className="rounded-full bg-sunken px-3 py-1 text-sm">
+          <StatusPill id="quote-status" tone={quoteTone(quote.status)} className="px-3 py-1">
             {QUOTE_STATUS[quote.status] ?? quote.status}
-          </span>
+          </StatusPill>
           <Link href="/quotes" className="rounded-lg border border-line px-3 py-1.5 text-sm">
             לכל ההצעות
           </Link>

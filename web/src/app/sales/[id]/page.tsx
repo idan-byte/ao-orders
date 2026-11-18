@@ -4,6 +4,8 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { LEAD_STAGE_LABEL, type LeadStage } from "@/lib/crm-core";
+import { leadTone } from "@/lib/status-tone";
+import { StatusPill } from "@/components/status-pill";
 import { channelText, type ChannelKind } from "@/lib/comm-core";
 import { ActionForm } from "@/components/action-form";
 import { TaskForm, TaskList, Timeline, type ActivityRow, type TaskRow } from "@/components/crm-blocks";
@@ -65,9 +67,9 @@ async function LeadContent({ params }: { params: PageProps<"/sales/[id]">["param
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold">{lead.display_name}</h1>
         <div className="flex items-center gap-2">
-          <span id="lead-stage" className="rounded-full bg-sunken px-3 py-1 text-sm">
+          <StatusPill id="lead-stage" tone={leadTone(lead.stage)} className="px-3 py-1">
             {LEAD_STAGE_LABEL[lead.stage]}
-          </span>
+          </StatusPill>
           <Link href="/sales" className="rounded-lg border border-line px-3 py-1.5 text-sm">
             חזרה למכירות
           </Link>

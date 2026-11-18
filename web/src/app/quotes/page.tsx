@@ -4,6 +4,8 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { QUOTE_STATUS } from "@/lib/quotes-data";
+import { quoteTone } from "@/lib/status-tone";
+import { StatusPill } from "@/components/status-pill";
 import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
@@ -115,7 +117,7 @@ async function QuotesContent({ searchParams }: { searchParams: PageProps<"/quote
                     </td>
                     <td className="px-2 py-2">{r.customer}</td>
                     <td className="px-2 py-2">
-                      <span className="rounded-full bg-sunken px-2.5 py-0.5 text-sm">{r.expired ? "נשלחה, פג תוקף" : (QUOTE_STATUS[r.status] ?? r.status)}</span>
+                      <StatusPill tone={r.expired ? "problem" : quoteTone(r.status)}>{r.expired ? "נשלחה, פג תוקף" : (QUOTE_STATUS[r.status] ?? r.status)}</StatusPill>
                     </td>
                     <td className="px-2 py-2">{r.version}</td>
                     <td className="px-2 py-2 text-end">{money.format(r.total)}</td>
