@@ -4,6 +4,8 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { canCancel, canEdit, canHold, nextStatus, STATUS_LABEL, type DeliveryChange, type DeliveryStatus } from "@/lib/orders-core";
+import { deliveryTone } from "@/lib/status-tone";
+import { StatusPill } from "@/components/status-pill";
 import { SOURCE_LABEL } from "@/lib/orders-data";
 import { computeTotals } from "@/lib/quote-totals";
 import { ActionForm } from "@/components/action-form";
@@ -91,9 +93,9 @@ async function OrderContent({ params }: { params: PageProps<"/orders/[id]">["par
           הזמנה <span dir="ltr">{order.number}</span> · {order.customer}
         </h1>
         <div className="flex items-center gap-2">
-          <span id="order-status" className="rounded-full bg-sunken px-3 py-1 text-sm">
+          <StatusPill id="order-status" tone={deliveryTone(order.status)} className="px-3 py-1">
             {STATUS_LABEL[order.status] ?? order.status}
-          </span>
+          </StatusPill>
           <Link href="/orders" className={small}>
             לכל ההזמנות
           </Link>
@@ -159,9 +161,9 @@ async function OrderContent({ params }: { params: PageProps<"/orders/[id]">["par
                 {dayFmt.format(new Date(d.delivery_date))}
                 {d.window ? <span dir="ltr"> {d.window}</span> : null}
               </h2>
-              <span data-delivery-status className="rounded-full bg-sunken px-3 py-1 text-sm">
+              <StatusPill data-delivery-status tone={deliveryTone(d.status)} className="px-3 py-1">
                 {STATUS_LABEL[d.status]}
-              </span>
+              </StatusPill>
             </div>
             <p className="text-sm text-muted">{d.address ?? "לא נבחרה כתובת אספקה"}</p>
             {held ? <p className="mt-2 rounded-lg bg-sunken px-3 py-2 text-sm font-medium">{d.status === "exception" ? "חריגה" : "עיכוב"}: {d.exception_note}</p> : null}

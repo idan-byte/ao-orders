@@ -4,6 +4,8 @@ import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { DELIVERY_STATUSES, STATUS_LABEL } from "@/lib/orders-core";
+import { deliveryTone } from "@/lib/status-tone";
+import { StatusPill } from "@/components/status-pill";
 import { LiveRefresh } from "@/components/live-refresh";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
@@ -148,7 +150,7 @@ async function OrdersContent({ searchParams }: { searchParams: PageProps<"/order
                       <td className="px-2 py-2 text-end">{r.units.toLocaleString("he-IL")}</td>
                       {showPrices ? <td className="px-2 py-2 text-end">{money.format(r.total)}</td> : null}
                       <td className="px-2 py-2">
-                        <span className="rounded-full bg-sunken px-2.5 py-0.5 text-sm">{STATUS_LABEL[r.status] ?? r.status}</span>
+                        <StatusPill tone={deliveryTone(r.status)}>{STATUS_LABEL[r.status] ?? r.status}</StatusPill>
                       </td>
                     </tr>
                   ))}
