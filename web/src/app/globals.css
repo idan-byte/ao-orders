@@ -84,6 +84,7 @@ body {
 /* The top bar is dark in both themes. Its own colours replace the page's for everything inside it, so the
    navigation and the user menu follow it without changes of their own. */
 .app-header {
+  --background: #2b2320;
   --surface: #2b2320;
   --sunken: #3a302b;
   --line: #4a3d36;
@@ -96,9 +97,24 @@ body {
 }
 
 /* ---------- The company logo (components/brand-mark.tsx). The mark is drawn at the width of its box. */
-.brand-mark { display: block; line-height: 0; border-radius: 10px; overflow: hidden; }
+.brand-mark { display: block; line-height: 0; }
 .brand-mark svg { display: block; width: 100%; height: auto; }
-.brand-header { width: 4.5rem; }
+.brand-on-light, .brand-on-dark { display: block; }
+/* The logo shows the version for the theme in use: dark logo on dark, light logo on light. */
+.brand-on-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand-on-light { display: none; }
+  :root:not([data-theme="light"]) .brand-on-dark { display: block; }
+}
+:root[data-theme="dark"] .brand-on-light { display: none; }
+:root[data-theme="dark"] .brand-on-dark { display: block; }
+/* Parts that are the background show the page's background, so the logo needs no tile of its own. */
+.logo-bg { fill: var(--background); }
+.brand-on-light .logo-fg { fill: #343537; }
+.brand-on-dark .logo-fg { fill: #fefefe; }
+.brand-header { width: 7rem; }
+.app-header .brand-on-light { display: none; }
+.app-header .brand-on-dark { display: block; }
 .login-brand { animation: brand-rise 0.8s var(--ease-out) both, brand-float 6s ease-in-out 0.8s infinite; }
 .login-brand .brand-accent-red,
 .login-brand .brand-accent-green { transform-box: fill-box; transform-origin: center; animation: brand-breathe 3.2s ease-in-out infinite; }
