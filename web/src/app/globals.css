@@ -95,19 +95,30 @@ body {
   color: #ffffff;
 }
 
-/* The company logo (components/brand-mark.tsx). The mark is drawn at the width of its box. */
-.brand-mark { display: block; line-height: 0; }
+/* ---------- The company logo (components/brand-mark.tsx). The mark is drawn at the width of its box. */
+.brand-mark { display: block; line-height: 0; border-radius: 10px; overflow: hidden; }
 .brand-mark svg { display: block; width: 100%; height: auto; }
 .brand-header { width: 4.5rem; }
-.login-brand { animation: brand-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.login-brand { animation: brand-rise 0.8s var(--ease-out) both, brand-float 6s ease-in-out 0.8s infinite; }
+.login-brand .brand-accent-red,
+.login-brand .brand-accent-green { transform-box: fill-box; transform-origin: center; animation: brand-breathe 3.2s ease-in-out infinite; }
+.login-brand .brand-accent-green { animation-delay: 0.6s; }
 
-/* While the phone number is typed, the logo's two accent shapes sway, one after the other. */
-.login-stage:has(input:focus) .brand-accent-red { animation: brand-sway 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-.login-stage:has(input:focus) .brand-accent-green { animation: brand-sway 1.6s ease-in-out 0.4s infinite reverse; transform-box: fill-box; transform-origin: center; }
+/* While the phone number is typed, the two accent shapes sway faster, one after the other. */
+.login-stage:has(input:focus) .brand-accent-red { animation: brand-sway 1.4s ease-in-out infinite; }
+.login-stage:has(input:focus) .brand-accent-green { animation: brand-sway 1.4s ease-in-out 0.35s infinite reverse; }
 
 @keyframes brand-rise {
-  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  from { opacity: 0; transform: translateY(14px) scale(0.94); }
   to { opacity: 1; transform: none; }
+}
+@keyframes brand-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes brand-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04) rotate(-1.5deg); }
 }
 @keyframes brand-sway {
   0%, 100% { transform: translateY(0) rotate(0deg); }
@@ -115,8 +126,35 @@ body {
   70% { transform: translateY(3%) rotate(5deg); }
 }
 
+/* ---------- Motion for the whole system. Durations and easing are shared, so every movement feels alike. */
+:root {
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur: 240ms;
+}
+
+/* Buttons answer a press at once: they sink slightly, and the primary button lifts a little under the pointer. */
+button:not(:disabled), a[href] { transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out); }
+button:not(:disabled):active { transform: scale(0.97); }
+.bg-accent:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
+.bg-accent:not(:disabled):active { transform: translateY(0) scale(0.97); box-shadow: none; }
+a.border:hover, button.border:not(:disabled):hover { border-color: var(--accent); }
+
+/* Pages arrive softly: the content of each page rises in once. */
+main > * { animation: rise-in 0.35s var(--ease-out) both; }
+main > :nth-child(2) { animation-delay: 40ms; }
+main > :nth-child(3) { animation-delay: 80ms; }
+main > :nth-child(n+4) { animation-delay: 120ms; }
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Keyboard users see where they are. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
 @media (prefers-reduced-motion: reduce) {
-  .login-brand, .login-stage .brand-accent-red, .login-stage .brand-accent-green { animation: none !important; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
 /* Printing a quote: only the document, on white, without the app chrome. */
