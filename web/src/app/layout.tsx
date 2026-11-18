@@ -23,7 +23,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </Suspense>
         <header className="app-header sticky top-0 z-10 border-b border-line bg-surface">
           <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-4 py-2.5">
-            <BrandMark className="brand-header" />
+            <BrandMark variant="header" className="brand-header" />
             {/* The navigation depends on who is signed in, so it streams in after the static header. */}
             <Suspense fallback={null}>
               <UserNav />
