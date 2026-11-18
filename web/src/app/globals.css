@@ -95,6 +95,30 @@ body {
   color: #ffffff;
 }
 
+/* The company logo (components/brand-mark.tsx). The mark is drawn at the width of its box. */
+.brand-mark { display: block; line-height: 0; }
+.brand-mark svg { display: block; width: 100%; height: auto; }
+.brand-header { width: 4.5rem; }
+.login-brand { animation: brand-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* While the phone number is typed, the logo's two accent shapes sway, one after the other. */
+.login-stage:has(input:focus) .brand-accent-red { animation: brand-sway 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.login-stage:has(input:focus) .brand-accent-green { animation: brand-sway 1.6s ease-in-out 0.4s infinite reverse; transform-box: fill-box; transform-origin: center; }
+
+@keyframes brand-rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes brand-sway {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  30% { transform: translateY(-7%) rotate(-7deg); }
+  70% { transform: translateY(3%) rotate(5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-brand, .login-stage .brand-accent-red, .login-stage .brand-accent-green { animation: none !important; }
+}
+
 /* Printing a quote: only the document, on white, without the app chrome. */
 @media print {
   body > header, .no-print { display: none !important; }
