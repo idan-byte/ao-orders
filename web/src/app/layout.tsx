@@ -20,7 +20,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Suspense fallback={null}>
           <TestBanner />
         </Suspense>
-        <header className="sticky top-0 z-10 border-b border-line bg-surface">
+        <header className="app-header sticky top-0 z-10 border-b border-line bg-surface">
           <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-4 py-2.5">
             <div className="font-display text-lg font-bold">A&amp;O</div>
             {/* The navigation depends on who is signed in, so it streams in after the static header. */}
