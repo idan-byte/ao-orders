@@ -100,7 +100,7 @@ export function RouteMap({
       layer.current.clearLayers();
       const located = stops.filter((s) => s.point);
       const points = located.map((s) => [s.point!.lat, s.point!.lng] as [number, number]);
-      if (points.length > 1) L.polyline(points, { color: "#0f6b5c", weight: 3, opacity: 0.7, dashArray: "6 6" }).addTo(layer.current);
+      if (points.length > 1) L.polyline(points, { color: "#b4441f", weight: 3, opacity: 0.7, dashArray: "6 6" }).addTo(layer.current);
       for (const s of located) {
         const done = s.delivered === s.deliveries;
         L.marker([s.point!.lat, s.point!.lng], {

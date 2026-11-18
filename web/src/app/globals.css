@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f3f6f5;
+  --background: #faf6f0;
   --surface: #ffffff;
-  --sunken: #e8eeec;
-  --line: #d3dcd9;
-  --foreground: #16211e;
-  --muted: #5b6b66;
-  --accent: #0f6b5c;
-  --accent-soft: #dcefea;
+  --sunken: #f2ebe1;
+  --line: #e3d8c9;
+  --foreground: #2a2420;
+  --muted: #6f625a;
+  --accent: #b4441f;
+  --accent-soft: #fbe7dc;
   /* Status colours, one background and text pair per tone (see lib/status-tone.ts). */
   --st-neutral-bg: #ece8e4; --st-neutral-fg: #4a423d;
   --st-waiting-bg: #fde9b8; --st-waiting-fg: #7a4b00;
@@ -20,14 +20,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: #101615;
-    --surface: #18211f;
-    --sunken: #212c29;
-    --line: #32403c;
-    --foreground: #e7efec;
-    --muted: #9bada7;
-    --accent: #4fc2ad;
-    --accent-soft: #17382f;
+    --background: #171210;
+    --surface: #211b18;
+    --sunken: #2c2420;
+    --line: #3d332e;
+    --foreground: #f3ebe3;
+    --muted: #b5a79b;
+    --accent: #e8704a;
+    --accent-soft: #3d2219;
     --st-neutral-bg: #2c3532; --st-neutral-fg: #d8e0dd;
     --st-waiting-bg: #4a3914; --st-waiting-fg: #fbd98a;
     --st-info-bg: #1f3554; --st-info-fg: #b5d0f7;
@@ -38,14 +38,14 @@
 }
 
 :root[data-theme="dark"] {
-  --background: #101615;
-  --surface: #18211f;
-  --sunken: #212c29;
-  --line: #32403c;
-  --foreground: #e7efec;
-  --muted: #9bada7;
-  --accent: #4fc2ad;
-  --accent-soft: #17382f;
+  --background: #171210;
+  --surface: #211b18;
+  --sunken: #2c2420;
+  --line: #3d332e;
+  --foreground: #f3ebe3;
+  --muted: #b5a79b;
+  --accent: #e8704a;
+  --accent-soft: #3d2219;
   --st-neutral-bg: #2c3532; --st-neutral-fg: #d8e0dd;
   --st-waiting-bg: #4a3914; --st-waiting-fg: #fbd98a;
   --st-info-bg: #1f3554; --st-info-fg: #b5d0f7;
@@ -81,6 +81,20 @@ body {
   color: var(--foreground);
 }
 
+/* The top bar is dark in both themes. Its own colours replace the page's for everything inside it, so the
+   navigation and the user menu follow it without changes of their own. */
+.app-header {
+  --surface: #2b2320;
+  --sunken: #3a302b;
+  --line: #4a3d36;
+  --foreground: #ffffff;
+  --muted: #cdbfb3;
+  --accent: #e8704a;
+  --accent-soft: #4a2a20;
+  background: #2b2320;
+  color: #ffffff;
+}
+
 /* Printing a quote: only the document, on white, without the app chrome. */
 @media print {
   body > header, .no-print { display: none !important; }
@@ -94,7 +108,7 @@ body {
   width: 34px;
   height: 34px;
   border-radius: 9999px;
-  background: #0f6b5c;
+  background: #b4441f;
   color: #fff;
   border: 2px solid #fff;
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
@@ -104,7 +118,7 @@ body {
   font-weight: 700;
   font-size: 15px;
 }
-.route-pin-done { background: #fff; color: #0f6b5c; border-color: #0f6b5c; }
+.route-pin-done { background: #fff; color: #b4441f; border-color: #b4441f; }
 .route-pin-new { background: #16211e; border-style: dashed; font-size: 20px; }
 /* Leaflet's panes use z-index up to 1000; keep them under the app's own header and dialogs. */
 #route-map { isolation: isolate; }
