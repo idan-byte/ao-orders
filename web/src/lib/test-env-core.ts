@@ -27,6 +27,13 @@ export const KEPT_TABLES = [
   "feeding_programs", "meal_types", "menus", "menu_week_starts", "menu_cells", "menu_cell_items", "menu_phrases", "dishes",
 ] as const;
 
+export type SwitchUser = { id: string; fullName: string; role: string };
+
+/** The people the test environment can sign in as: active staff (customers have their own portal and are left out). */
+export async function switchableUsers(q: Q): Promise<SwitchUser[]> {
+  return q<SwitchUser>("select id::text, full_name as \"fullName\", role::text from users where active and role <> 'customer' order by full_name");
+}
+
 /** How many records each business table holds, for the confirmation screen. */
 export async function businessCounts(q: Q): Promise<{ table: string; rows: number }[]> {
   const out: { table: string; rows: number }[] = [];

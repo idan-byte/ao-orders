@@ -1,12 +1,14 @@
 import { Suspense } from "react";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
-import { businessCounts, CONFIRM_WORDS } from "@/lib/test-env-core";
+import { businessCounts, CONFIRM_WORDS, switchableUsers } from "@/lib/test-env-core";
 import { testAddress, testMode } from "@/lib/mail-test-mode";
+import { isRole, ROLES } from "@/lib/permissions";
 import { ActionForm } from "@/components/action-form";
 import { Loading } from "@/components/loading";
 import { NoAccess } from "@/components/no-access";
 import { cleanTestEnvAction } from "./actions";
+import { switchUserAction } from "./switch-actions";
 
 const panel = "rounded-xl border border-line bg-surface p-4";
 const field = "rounded-lg border border-line bg-surface px-3 py-2 text-foreground";
@@ -30,6 +32,11 @@ async function TestEnvironment() {
   const address = testAddress();
   const counts = await businessCounts(query);
   const total = counts.reduce((a, c) => a + c.rows, 0);
+  const switchable = on ? await switchableUsers(query) : [];
+  // Grouped by role, so the list reads as the staff chart and not as one long list of names.
+  const switchableRoles = Object.entries(
+    switchable.reduce<Record<string, typeof switchable>>((acc, u) => ((acc[u.role] ??= []).push(u), acc), {}),
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -53,6 +60,39 @@ async function TestEnvironment() {
           </p>
         )}
       </section>
+
+      {on ? (
+        <section className={panel} id="test-switch">
+          <h2 className="font-display text-lg font-bold">לחוות את המערכת כמשתמש אחר</h2>
+          <p className="mb-3 mt-1 text-sm text-muted">
+            נכנסים בלי קוד כמי שברשימה, ורואים את המסכים, הכפתורים וההרשאות בדיוק כמו שהוא רואה. בכותרת העליונה מופיע תמיד איך לחזור למנהל. אפשר להחליף רק אחרי שחוזרים.
+          </p>
+          {switchable.length === 0 ? (
+            <p className="text-sm">אין עדיין משתמשים פעילים שאפשר להתחבר בשמם. מוסיפים משתמש מ״הגדרות ← משתמשים״.</p>
+          ) : (
+            <form action={switchUserAction} className="flex flex-wrap items-end gap-3">
+              <label className={label}>
+                משתמש
+                <select name="user_id" required className={`${field} w-80`} id="test-switch-user" defaultValue="">
+                  <option value="" disabled>
+                    בחרו משתמש…
+                  </option>
+                  {switchableRoles.map(([role, people]) => (
+                    <optgroup key={role} label={isRole(role) ? ROLES[role] : role}>
+                      {people.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+              <button className="rounded-lg border border-line px-4 py-2 font-medium hover:border-accent">כניסה כמשתמש</button>
+            </form>
+          )}
+        </section>
+      ) : null}
 
       <section className={`${panel} border-2`} id="test-clean">
         <h2 className="font-display text-lg font-bold">ניקוי סביבת הטסט</h2>

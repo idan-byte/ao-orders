@@ -113,6 +113,19 @@ export async function deleteSession(q: Q, token: string | undefined): Promise<vo
   if (token) await q("delete from sessions where token_hash = $1", [sha256(token)]);
 }
 
+/** Opens a session for a user without a code. Used only by the test environment's "sign in as" (test mode only). */
+export async function openSessionFor(q: Q, userId: string, now: Date = new Date()): Promise<{ token: string; expiresAt: Date }> {
+  const token = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(now.getTime() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  await q("insert into sessions (token_hash, user_id, created_at, expires_at) values ($1, $2, $3::timestamptz, $4::timestamptz)", [
+    sha256(token),
+    userId,
+    now.toISOString(),
+    expiresAt.toISOString(),
+  ]);
+  return { token, expiresAt };
+}
+
 /** Deactivating a user must end their sessions immediately. */
 export async function deleteSessionsOfUser(q: Q, userId: string): Promise<void> {
   await q("delete from sessions where user_id = $1", [userId]);
