@@ -5,6 +5,8 @@ import { getUserBySession, type SessionUser } from "@/lib/auth-core";
 import { can, type Permission } from "@/lib/permissions";
 
 export const SESSION_COOKIE = "ao_session";
+/** Test mode only: the administrator's session, kept while the test environment is signed in as another person. */
+export const RETURN_COOKIE = "ao_test_return";
 
 /** The signed-in user, or null. Reads the request, so callers must sit behind <Suspense>. */
 export async function getCurrentUser(): Promise<SessionUser | null> {
